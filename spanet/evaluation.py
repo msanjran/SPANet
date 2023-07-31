@@ -47,6 +47,9 @@ def load_model(
     if checkpoint is None:
         checkpoint = sorted(glob(f"{log_directory}/checkpoints/epoch*"))[-1]
         print(f"Loading: {checkpoint}")
+    else:
+        checkpoint = f"{log_directory}/checkpoints/{checkpoint}"
+        print(f"Loading: {checkpoint}")
 
     checkpoint = torch.load(checkpoint, map_location='cpu')
     checkpoint = checkpoint["state_dict"]
