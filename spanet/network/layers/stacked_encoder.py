@@ -70,7 +70,7 @@ class StackedEncoder(nn.Module):
         # particle_sequence_mask: [1, B, 1]
         # combined_sequence_mask: [T + 1, B, 1]
         # -----------------------------------------------------------------------------
-        particle_sequence_mask = sequence_mask.new_ones(1, batch_size, 1)
+        particle_sequence_mask = sequence_mask.new_ones(1, batch_size, 1, dtype=torch.bool)
         combined_sequence_mask = torch.cat((particle_sequence_mask, sequence_mask), dim=0)
 
         # -----------------------------------------------------------------------------
