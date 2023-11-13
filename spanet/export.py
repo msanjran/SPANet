@@ -127,8 +127,8 @@ def main(
         opset: int
 ):
     major_version, minor_version, *_ = torch.__version__.split(".")
-    if int(major_version) == 2 and int(minor_version) == 0:
-        raise RuntimeError("ONNX export with Torch 2.0.x is not working. Either install 2.1 or 1.13.")
+    #if int(major_version) == 2 and int(minor_version) == 0:
+    #    raise RuntimeError("ONNX export with Torch 2.0.x is not working. Either install 2.1 or 1.13.")
 
     model = load_model(log_directory, cuda=gpu)
 
