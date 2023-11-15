@@ -102,12 +102,22 @@ def evaluate_on_test_dataset(
     if progress:
         dataloader = progress.track(model.test_dataloader(), description="Evaluating Model")
 
-    for batch in dataloader:
+    for i, batch in enumerate(dataloader):
         sources = tuple(Source(x[0].to(model.device), x[1].to(model.device)) for x in batch.sources)
 
         with torch.cuda.amp.autocast(enabled=fp16):
             outputs = model.forward(sources)
-
+            
+        if i == 0:
+            # print(f"Output assignments: {outputs.assignments}")
+            print(f"Len (...): {len(outputs.assignments)}")
+            print(f"Len ((assingments?)...): {len(outputs.assignments[0])}")
+            print(f"Shape ((assignments?)...): {np.shape(outputs.assignments[0])}")
+            # print(f"Len ((detections?)...): {len(outputs.assignments[4])}")
+            print(f"Len Input to extract_predictions: {len([np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf) for assignment in outputs.assignments])}")
+            print(f"Model event info: {model.event_info.product_symbolic_groups.values()}")
+            print(f"Model event info: {model.event_info.product_symbolic_groups}")
+        
         assignment_indices = extract_predictions([
             np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf)
             for assignment in outputs.assignments
@@ -130,23 +140,29 @@ def evaluate_on_test_dataset(
 
         assignment_probabilities = []
         dummy_index = torch.arange(assignment_indices[0].shape[0])
-        for assignment_probability, assignment, symmetries in zip(
+
+        for j, (assignment_probability, assignment, symmetries) in enumerate(zip(
             outputs.assignments,
             assignment_indices,
-            model.event_info.product_symbolic_groups.values()
-        ):
+            model.event_info.product_symbolic_groups.values())):
             # Get the probability of the best assignment.
             # Have to use explicit function call here to construct index dynamically.
             assignment_probability = assignment_probability.__getitem__((dummy_index, *assignment.T))
 
             # Convert from log-probability to probability.
             assignment_probability = torch.exp(assignment_probability)
+            if (i==0) and (j==0):
+                print(f"Symmetries: {symmetries}")
+                print(f"Symmetries order: {symmetries.order()}")
 
             # Multiply by the symmetry factor to account for equivalent predictions.
             assignment_probability = symmetries.order() * assignment_probability
 
             # Convert back to cpu and add to database.
             assignment_probabilities.append(assignment_probability.cpu().numpy())
+        
+        if i == 0:
+            print(f"Assignment probabilities t1: {assignment_probabilities[0][0:5]}")
 
         for i, name in enumerate(model.event_info.product_particles):
             full_assignments[name].append(assignment_indices[i])

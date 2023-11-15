@@ -124,13 +124,20 @@ def main(
         output_log_transform: bool,
         output_embeddings: bool,
         gpu: bool,
-        opset: int
+        opset: int,
+        checkpoint: str,
 ):
     major_version, minor_version, *_ = torch.__version__.split(".")
-    #if int(major_version) == 2 and int(minor_version) == 0:
-    #    raise RuntimeError("ONNX export with Torch 2.0.x is not working. Either install 2.1 or 1.13.")
+    if int(major_version) == 2 and int(minor_version) == 0:
+        raise RuntimeError("ONNX export with Torch 2.0.x is not working. Either install 2.1 or 1.13.")
 
-    model = load_model(log_directory, cuda=gpu)
+    # load specific checkpoint
+    if checkpoint is None:
+        model = load_model(log_directory, cuda=gpu)
+    else:
+        checkpoint = checkpoint.split('/')[-1]
+        print(f"Loading {log_directory.split('/')[-1]} checkpoint: {checkpoint.split('-')[0]}")
+        model = load_model(log_directory, cuda=gpu, checkpoint=checkpoint)
 
     # Create wrapped model with flat inputs and outputs
     wrapped_model = WrappedModel(model, input_log_transform, output_log_transform, output_embeddings)
@@ -185,6 +192,9 @@ if __name__ == '__main__':
 
     parser.add_argument("--output-embeddings", action="store_true",
                         help="Exported model will also output the embeddings for every part of the event.")
+    
+    parser.add_argument("-cp", "--checkpoint", type=str, default=None,
+                        help="Checkpointed epoch we want to use for inference.")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)
