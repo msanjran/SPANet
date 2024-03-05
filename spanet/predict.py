@@ -71,8 +71,15 @@ def main(log_directory: str,
          batch_size: Optional[int],
          output_vectors: bool,
          gpu: bool,
-         fp16: bool):
-    model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16)
+         fp16: bool,
+         checkpoint: Optional[str]):
+    
+    # load model at particular checkpoint
+    if checkpoint is not None:
+        checkpoint = checkpoint.split('/')[-1]
+        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint)
+    else:
+        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16)
 
     if output_vectors:
         evaluation, full_outputs = evaluate_on_test_dataset(model, return_full_output=True, fp16=fp16)
@@ -109,6 +116,9 @@ if __name__ == '__main__':
 
     parser.add_argument("-v", "--output_vectors", action="store_true",
                         help="Include embedding vectors in output in an additional section of the HDF5.")
+    
+    parser.add_argument("-cp", "--checkpoint", type=str, default=None,
+                        help="Checkpointed epoch we want to use for inference.")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)

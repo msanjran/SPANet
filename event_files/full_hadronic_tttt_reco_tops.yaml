@@ -5,7 +5,7 @@ INPUTS:
             pt: log_normalize
             eta: normalize
             phi: normalize
-            btag: none
+            btagged: none
     GLOBAL:
 
 EVENT:
@@ -41,3 +41,5 @@ PERMUTATIONS:
 REGRESSIONS:
 
 CLASSIFICATIONS:
+    EVENT:
+        - reco_tops

@@ -245,3 +245,11 @@ ipython_config.py
 *_logs/
 *_output/
 environment/
+
+# saved models
+saved_models/
+test_data/
+check_evaluate_epoch_end/
+
+# notebooks
+notebooks/

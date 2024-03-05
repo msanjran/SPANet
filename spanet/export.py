@@ -11,6 +11,9 @@ from spanet import JetReconstructionModel
 from spanet.dataset.types import Source
 from spanet.evaluation import load_model
 
+# debug
+import warnings
+from IPython import embed
 
 class WrappedModel(pl.LightningModule):
     def __init__(
@@ -40,33 +43,52 @@ class WrappedModel(pl.LightningModule):
 
     def forward(self, sources: List[Source]):
         if self.input_log_transform:
+            print(f"7.1. input log transform: ...")
             sources = self.apply_input_log_transform(sources)
+            print(f"7.1. input log transform: done")
 
+        print(f"7.2. model(sources): ...")
         outputs = self.model(sources)
+        print(f"7.2. model(sources): done")
+        
+        embed()
 
         if self.output_log_transform:
+            
+            print(f"7.3. assignments: ...")
             assignments = [assignment for assignment in outputs.assignments]
+            print(f"Len. assignments: {len(assignments)}")
+            print(f"Assignments[0]: {assignments[0]}")
+            
+            print(f"7.4. detections: ...")
             detections = [F.logsigmoid(detection) for detection in outputs.detections]
 
+            print(f"7.5. classifications: ...")
             classifications = [
                 F.log_softmax(outputs.classifications[key], dim=-1)
                 for key in self.model.training_dataset.classifications.keys()
             ]
 
         else:
+            print(f"7.6. assignments: ...")
             assignments = [assignment.exp() for assignment in outputs.assignments]
+            
+            print(f"7.7. detections: ...")
             detections = [torch.sigmoid(detection) for detection in outputs.detections]
-
+            
+            print(f"7.8. classifications: ...")
             classifications = [
                 F.softmax(outputs.classifications[key], dim=-1)
                 for key in self.model.training_dataset.classifications.keys()
             ]
-
+            
+        print(f"7.9. regressions: ...")
         regressions = [
             outputs.regressions[key]
             for key in self.model.training_dataset.regressions.keys()
         ]
-
+        
+        print(f"7.10. embedding_vectors: ...")
         embedding_vectors = list(outputs.vectors.values()) if self.output_embeddings else []
 
         return *assignments, *detections, *regressions, *classifications, *embedding_vectors
@@ -140,19 +162,37 @@ def main(
         model = load_model(log_directory, cuda=gpu, checkpoint=checkpoint)
 
     # Create wrapped model with flat inputs and outputs
+    print(f"1. WrappedModel: ...")
     wrapped_model = WrappedModel(model, input_log_transform, output_log_transform, output_embeddings)
+    print(f"1. WrappedModel: done")
+    
+    print(f"2. wrapped_model.to: ...")
     wrapped_model.to(model.device)
+    print(f"2. wrapped_model.to: done")
+    
+    print(f"3. wrapped_model.eval: ...")
     wrapped_model.eval()
+    print(f"3. wrapped_model.eval: done")
+    
+    print(f"4. for parameter in wrapped_model.parameters: ...")
     for parameter in wrapped_model.parameters():
         parameter.requires_grad_(False)
-
+    print(f"4. for parameter in wrapped_model.parameters: ...")
+    
+    print(f"5. onnx specification: ...")
     input_names, output_names, dynamic_axes = onnx_specification(model, output_log_transform, output_embeddings)
-
+    print(f"5. onnx specification: done")
+    
+    print(f"6. batches: ...")
     batch = next(iter(model.train_dataloader()))
+    print(f"Batch: {batch}")
     sources = batch.sources
+    print(f"Batch sources: {sources}")
     if gpu:
         sources = tree_map(lambda x: x.cuda(), batch.sources)
     sources = tree_map(lambda x: x[:1], sources)
+    print(f"sources tree_map: {sources}")
+    print(f"6. batches: done")
 
     print("-" * 60)
     print(f"Compiling network to ONNX model: {output_file}")
@@ -160,6 +200,8 @@ def main(
         print("WARNING -- No input log transform! User must apply log transform manually. -- WARNING")
     print("-" * 60)
     
+    # warnings.simplefilter("error")
+    print(f"7. to_onnx: ...")
     wrapped_model.to_onnx(
         output_file,
         sources,
@@ -168,6 +210,7 @@ def main(
         dynamic_axes=dynamic_axes,
         opset_version=opset
     )
+    print(f"7. to_onnx: done")
 
 
 if __name__ == '__main__':

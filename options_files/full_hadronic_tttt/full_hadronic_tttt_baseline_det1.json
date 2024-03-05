@@ -29,8 +29,8 @@
 
     "skip_connections": true,
     "initial_embedding_skip_connections": true,
-    "event_info_file": "./event_files/full_hadronic_tttt.yaml",
-    "training_file": "/nfs/dust/cms/user/sanjrani/SPANet_Investigations/investigation2/tttt_hadronic/datasets/h5_from_nanoaod/data5/h4t/concatenate/data5_concatenate_training.h5",
+    "event_info_file": "./event_files/full_hadronic_tttt_reco_tops.yaml",
+    "training_file": "/nfs/dust/cms/user/sanjrani/SPANet_Investigations/investigation2/pepper_analysis/get_spanet_training/tttt_eventdir/TTTT_TuneCP5_13TeV-amcatnlo-pythia/spanet/h4t_preselection_FULL_training.h5",
 
     "normalize_features": true,
     "limit_to_num_jets": 0,
@@ -38,6 +38,7 @@
     "balance_jets": false,
     "partial_events": true,
     "balance_particles": true,
+    "balance_classifications":true,
 
     "dataset_limit": 1.0,
     "train_validation_split": 0.95,
@@ -56,7 +57,7 @@
     "detection_loss_scale": 1.0,
     "kl_loss_scale": 0.0,
     "regression_loss_scale": 0.0,
-    "classification_loss_scale": 0.0,
+    "classification_loss_scale": 1.0,
 
     "l2_penalty": 0.0002,
     "gradient_clip": 0.0,

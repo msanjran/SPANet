@@ -32,7 +32,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
             # "average_precision": sk_metrics.average_precision_score
         }
 
-    def compute_metrics(self, jet_predictions, particle_scores, stacked_targets, stacked_masks):
+    def compute_metrics(self, jet_predictions, particle_scores, stacked_targets, stacked_masks, classifications, classification_targets):
         event_permutation_group = self.event_permutation_tensor.cpu().numpy()
         num_permutations = len(event_permutation_group)
         num_targets, batch_size = stacked_masks.shape
@@ -83,6 +83,11 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         for name, metric in self.particle_score_metrics.items():
             metrics[f"particle/{name}"] = metric(particle_targets, particle_scores)
+            
+        for key in classification:
+            accuracy = (classifications[key] == classification_targets[key])
+            metrics[f"classifications/{key}_accuracy"] = accuracy.mean()
+
 
         # Compute the sum accuracy of all complete events to act as our target for
         # early stopping, hyperparameter optimization, learning rate scheduling, etc.
@@ -124,7 +129,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
                     prediction[:, indices] = np.sort(prediction[:, indices])
                     target[:, indices] = np.sort(target[:, indices])
 
-        metrics.update(self.compute_metrics(jet_predictions, particle_scores, stacked_targets, stacked_masks))
+        metrics.update(self.compute_metrics(jet_predictions, particle_scores, stacked_targets, stacked_masks, classifications, classification_targets))
 
         for key in regressions:
             delta = regressions[key] - regression_targets[key]
