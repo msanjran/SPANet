@@ -1,0 +1,3 @@
+full_hadronic_tttt_reconstruct_x:
+- 0/ baseline (architecture that from authors' initial tttt example)
+- 1/ same architecture as from marko's hhh_boosted from a year ago

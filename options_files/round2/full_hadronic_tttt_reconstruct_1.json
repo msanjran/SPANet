@@ -1,11 +1,11 @@
 {
-    "hidden_dim": 64,
-    "transformer_dim": 64,
+    "hidden_dim": 32,
+    "transformer_dim": 32,
     "initial_embedding_dim": 16,
-    "position_embedding_dim": 32,
+    "position_embedding_dim": 16,
 
     "num_embedding_layers": 10,
-    "num_encoder_layers": 6,
+    "num_encoder_layers": 4,
 
     "num_branch_embedding_layers": 3,
     "num_branch_encoder_layers": 3,
@@ -29,8 +29,8 @@
 
     "skip_connections": true,
     "initial_embedding_skip_connections": true,
-    "event_info_file": "./event_files/full_hadronic_tttt_reco_tops.yaml",
-    "training_file": "/nfs/dust/cms/user/sanjrani/SPANet_Investigations/investigation2/pepper_analysis/get_spanet_training/tttt_eventdir/TTTT_TuneCP5_13TeV-amcatnlo-pythia/spanet/h4t_preselection_ODD_WGT_training.h5",
+    "event_info_file": "./event_files/round2/full_hadronic_tttt_reco_tops.yaml",
+    "training_file": "/nfs/dust/cms/user/sanjrani/SPANet_Investigations/investigation2/pepper_analysis/output/h4t_systematics/spanet/input/genstudies_2017_jpt20_GENRECO_training/TTZprimeToTT_M-500_Width4_TuneCP5_13TeV-madgraph-pythia8/TTZprimeToTT_M-500_Width4_TuneCP5_13TeV-madgraph-pythia8_even_train.h5",
 
     "normalize_features": true,
     "limit_to_num_jets": 0,
@@ -57,11 +57,11 @@
     "detection_loss_scale": 1.0,
     "kl_loss_scale": 0.0,
     "regression_loss_scale": 0.0,
-    "classification_loss_scale": 1.0,
+    "classification_loss_scale": false,
 
     "l2_penalty": 0.0002,
     "gradient_clip": 0.0,
-    "dropout": 0.0,
+    "dropout": 0.2,
 
     "epochs": 500,
     "num_gpu": 1,

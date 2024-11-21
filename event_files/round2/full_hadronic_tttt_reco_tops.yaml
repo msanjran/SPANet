@@ -1,0 +1,47 @@
+INPUTS:
+    SEQUENTIAL:
+        Jets:
+            mass: log_normalize
+            pt: log_normalize
+            eta: normalize
+            sinphi: normalize
+            cosphi: normalize
+            
+            btagged: none
+            btag: none
+            btagDeepFlavQG: none
+    GLOBAL:
+
+EVENT:
+    t1:
+        - q1: Jets
+        - q2: Jets
+        - b: Jets
+    t2:
+        - q1: Jets
+        - q2: Jets
+        - b: Jets
+    t3:
+        - q1: Jets
+        - q2: Jets
+        - b: Jets
+    t4:
+        - q1: Jets
+        - q2: Jets
+        - b: Jets
+
+PERMUTATIONS:
+    EVENT:
+        - [t1, t2, t3, t4]
+    t1:
+        - [q1, q2]
+    t2:
+        - [q1, q2]
+    t3:
+        - [q1, q2]
+    t4:
+        - [q1, q2]
+
+REGRESSIONS:
+
+CLASSIFICATIONS:
