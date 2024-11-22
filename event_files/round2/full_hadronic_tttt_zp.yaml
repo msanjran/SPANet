@@ -13,19 +13,19 @@ INPUTS:
     GLOBAL:
 
 EVENT:
-    t1:
+    zpt1:
         - q1: Jets
         - q2: Jets
         - b: Jets
-    t2:
+    zpt2:
         - q1: Jets
         - q2: Jets
         - b: Jets
-    t3:
+    nzpt1:
         - q1: Jets
         - q2: Jets
         - b: Jets
-    t4:
+    nzpt2:
         - q1: Jets
         - q2: Jets
         - b: Jets

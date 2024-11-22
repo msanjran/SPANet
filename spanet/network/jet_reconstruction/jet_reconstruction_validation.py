@@ -84,7 +84,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
         for name, metric in self.particle_score_metrics.items():
             metrics[f"particle/{name}"] = metric(particle_targets, particle_scores)
             
-        for key in classification:
+        for key in classifications:
             accuracy = (classifications[key] == classification_targets[key])
             metrics[f"classifications/{key}_accuracy"] = accuracy.mean()
 
