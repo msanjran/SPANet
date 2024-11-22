@@ -59,10 +59,10 @@ def main(
     # Create options file and load any optional extra information.
     # -------------------------------------------------------------------------------------------------------
     options = Options(event_file, training_file, validation_file)
-
+    
     if options_file is not None:
         with open(options_file, 'r') as json_file:
-            options.update_options(json.load(json_file))
+            options.update_options(json.load(json_file), update_datasets=False)
 
     # -------------------------------------------------------------------------------------------------------
     # Command line overrides for common option values.
