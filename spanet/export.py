@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from typing import List
+import os
 
 import torch
 from torch.nn import functional as F
@@ -152,14 +153,26 @@ def main(
     major_version, minor_version, *_ = torch.__version__.split(".")
     if int(major_version) == 2 and int(minor_version) == 0:
         raise RuntimeError("ONNX export with Torch 2.0.x is not working. Either install 2.1 or 1.13.")
-
+        
     # load specific checkpoint
     if checkpoint is None:
         model = load_model(log_directory, cuda=gpu)
+        checkpoint = sorted(glob(f"{log_directory}/checkpoints/epoch*"))[-1]
     else:
         checkpoint = checkpoint.split('/')[-1]
         print(f"Loading {log_directory.split('/')[-1]} checkpoint: {checkpoint.split('-')[0]}")
         model = load_model(log_directory, cuda=gpu, checkpoint=checkpoint)
+
+    # name file if not given (preferred)
+    if output_file is None:
+        output_fname = f"spanet_v{os.path.basename(log_directory).split('_')[-1]}_e{checkpoint}"
+        if input_log_transform: output_fname = f"{output_fname}_inputLogTransform"
+        if output_log_transform: output_fname = f"{output_fname}_outputLogTransform"
+        if output_embeddings: output_fname = f"{output_fname}_outputEmbeddings"
+
+        odir = os.path.join(log_directory, "in_onnx")
+        os.makedirs(odir, exist_ok=True)
+        output_file = os.path.join(odir, f"{output_fname}.onnx")
 
     # Create wrapped model with flat inputs and outputs
     print(f"1. WrappedModel: ...")
@@ -218,7 +231,7 @@ if __name__ == '__main__':
     parser.add_argument("log_directory", type=str,
                         help="Pytorch Lightning Log directory containing the checkpoint and options file.")
 
-    parser.add_argument("output_file", type=str,
+    parser.add_argument("-o", "--output_file", type=str, default=None, 
                         help="Name to output the ONNX model to.")
 
     parser.add_argument("-g", "--gpu", action="store_true",

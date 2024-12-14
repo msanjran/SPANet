@@ -1,6 +1,7 @@
 from argparse import ArgumentParser
 from typing import Optional
 from numpy import ndarray as Array
+import os
 
 import h5py
 
@@ -65,18 +66,19 @@ def create_hdf5_output(
 
 
 def main(log_directory: str,
-         output_file: str,
+         output_file: Optional[str],
          test_file: Optional[str],
          event_file: Optional[str],
          batch_size: Optional[int],
          output_vectors: bool,
          gpu: bool,
          fp16: bool,
-         checkpoint: Optional[str]):
+         checkpoint: Optional[str],
+         output_directory: Optional[str]):
     
     # load model at particular checkpoint
     if checkpoint is not None:
-        checkpoint = checkpoint.split('/')[-1]
+        checkpoint = os.path.basename(checkpoint)
         model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint)
     else:
         model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16)
@@ -87,6 +89,17 @@ def main(log_directory: str,
         evaluation = evaluate_on_test_dataset(model, return_full_output=False, fp16=fp16)
         full_outputs = None
 
+    # always save in 'version_x'
+    output_directory = os.path.join(output_directory, os.path.basename(log_directory), 'predict')
+    os.makedirs(output_directory, exist_ok=True)
+    if output_file is None:
+        output_file = os.path.basename(model.options.testing_file).replace(".h5", "")
+        ckpt = checkpoint if checkpoint is not None else "default"
+        output_file = os.path.join( output_directory, f"{output_file}_predictions_{ckpt}.h5" )
+    else:
+        output_file = os.path.basename(output_file) # ignore path we give --> we want o_dir/version_x/predictions/output.h5
+        output_file = os.path.join( output_directory, output_file)
+        
     create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs)
 
 
@@ -95,7 +108,7 @@ if __name__ == '__main__':
     parser.add_argument("log_directory", type=str,
                         help="Pytorch Lightning Log directory containing the checkpoint and options file.")
 
-    parser.add_argument("output_file", type=str,
+    parser.add_argument("-o", "--output_file", type=str, default=None,
                         help="The output HDF5 to create with the new predicted jets for each event.")
 
     parser.add_argument("-tf", "--test_file", type=str, default=None,
@@ -119,6 +132,10 @@ if __name__ == '__main__':
     
     parser.add_argument("-cp", "--checkpoint", type=str, default=None,
                         help="Checkpointed epoch we want to use for inference.")
+
+    parser.add_argument("-od", "--output_directory", type=str, 
+                        default="/nfs/dust/cms/user/sanjrani/SPANet_Investigations/investigation2/pepper_analysis/output/h4t_systematics/spanet/output",
+                        help="Where to save output to (creates 'version_x' directory inside it)")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)
