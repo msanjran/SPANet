@@ -139,10 +139,23 @@ def main(
     # )
 
     # Create the checkpoint for this training run. We will save the best validation networks based on 'accuracy'
+    # Old: pre 16may25
+    # callbacks = [
+    #     ModelCheckpoint(
+    #         verbose=options.verbose_output,
+    #         monitor='validation_accuracy',
+    #         save_top_k=-1,
+    #         mode='max',
+    #         save_last=True
+    #     ),
+    #     ...
+    # ]
+    # New: post 16may25 --> but I've kept save_top_k=-1 instead of save_top_k=3
     callbacks = [
         ModelCheckpoint(
             verbose=options.verbose_output,
-            monitor='validation_accuracy',
+            filename='{epoch}-{step}-{validation_average_jet_accuracy:.3f}',
+            monitor='validation_average_jet_accuracy',
             save_top_k=-1,
             mode='max',
             save_last=True
