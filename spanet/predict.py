@@ -96,9 +96,9 @@ def main(log_directory: str,
         output_file = os.path.basename(model.options.testing_file).replace(".h5", "")
         ckpt = checkpoint if checkpoint is not None else "default"
         output_file = os.path.join( output_directory, f"{output_file}_predictions_{ckpt}.h5" )
-    else:
-        output_file = os.path.basename(output_file) # ignore path we give --> we want o_dir/version_x/predictions/output.h5
-        output_file = os.path.join( output_directory, output_file)
+    elif len(os.path.normpath(output_file).split(os.sep)) == 1:
+        # o_dir/version_x/predictions/<output>.h5
+        output_file = os.path.join(output_directory, output_file)
         
     create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs)
 
@@ -134,7 +134,7 @@ if __name__ == '__main__':
                         help="Checkpointed epoch we want to use for inference.")
 
     parser.add_argument("-od", "--output_directory", type=str, 
-                        default="/nfs/dust/cms/user/sanjrani/SPANet_Investigations/investigation2/pepper_analysis/output/h4t_systematics/spanet/output",
+                        default="/data/dust/user/sanjrani/SPANet_Investigations/investigation2/pepper_analysis/output/h4t_systematics/spanet/output",
                         help="Where to save output to (creates 'version_x' directory inside it)")
 
     arguments = parser.parse_args()
