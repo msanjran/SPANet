@@ -76,6 +76,20 @@ def create_hdf5_output(
 #          checkpoint: Optional[str],
 #          output_directory: Optional[str]):
 
+def get_model_name(path_to_version, checkpoint_file):
+    '''
+    convert '/path/to/version_X/checkpoints/epoch=Y-step=Z-<validation_accuracy>.ckpt'
+    to 'vXeY'
+    '''
+    version = os.path.basename(path_to_version)
+    version_num = version.split("_")[1]
+
+    checkpoint = os.path.splitext(checkpoint_file)[0]
+    checkpoint = checkpoint.split("-")[0] # epoch=Y
+    epoch = checkpoint.split("=")[1]
+
+    return f"v{version_num}e{epoch}"
+
 # New: post 16may25
 def main(log_directory: str,
          output_file: str,
@@ -105,15 +119,24 @@ def main(log_directory: str,
         full_outputs = None
 
     # always save in 'version_x'
-    output_directory = os.path.join(output_directory, os.path.basename(log_directory), 'predict')
-    os.makedirs(output_directory, exist_ok=True)
+    if output_directory is None:
+        # only relevant if output_file not specified
+        output_directory = os.path.join(log_directory, "predictions")
+        os.makedirs(output_directory, exist_ok=True)
     if output_file is None:
-        output_file = os.path.basename(model.options.testing_file).replace(".h5", "")
-        ckpt = checkpoint if checkpoint is not None else "default"
-        output_file = os.path.join( output_directory, f"{output_file}_predictions_{ckpt}.h5" )
-    elif len(os.path.normpath(output_file).split(os.sep)) == 1:
-        # o_dir/version_x/predictions/<output>.h5
-        output_file = os.path.join(output_directory, output_file)
+        output_name = f"{os.path.splitext(os.path.basename(model.options.testing_file))[0]}_PREDICT{get_model_name(log_directory, checkpoint)}.h5"
+        output_file = os.path.join(output_directory, output_name)
+
+    # output_directory = os.path.join(output_directory, os.path.basename(log_directory), 'predict')
+    # os.makedirs(output_directory, exist_ok=True)
+    # if output_file is None:
+    #     output_file = os.path.basename(model.options.testing_file).replace(".h5", "")
+    #     ckpt = checkpoint if checkpoint is not None else "default"
+    #     output_file = os.path.join( output_directory, f"{output_file}_predictions_{ckpt}.h5" )
+    # elif len(os.path.normpath(output_file).split(os.sep)) == 1:
+    #     # wtf does this do?
+    #     # o_dir/version_x/predictions/<output>.h5
+    #     output_file = os.path.join(output_directory, output_file)
         
     create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs)
 
@@ -148,11 +171,11 @@ if __name__ == '__main__':
     parser.add_argument("-v", "--output_vectors", action="store_true",
                         help="Include embedding vectors in output in an additional section of the HDF5.")
     
-    parser.add_argument("-cp", "--checkpoint", type=str, default=None,
-                        help="Checkpointed epoch we want to use for inference.")
+    # parser.add_argument("-cp", "--checkpoint", type=str, default=None,
+    #                     help="Checkpointed epoch we want to use for inference.")
 
     parser.add_argument("-od", "--output_directory", type=str, 
-                        default="/data/dust/user/sanjrani/SPANet_Investigations/investigation2/pepper_analysis/output/h4t_systematics/spanet/output",
+                        default=None,
                         help="Where to save output to (creates 'version_x' directory inside it)")
 
     arguments = parser.parse_args()

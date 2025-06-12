@@ -183,8 +183,13 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
         for key in targets:
             current_prediction = predictions[key]
-            current_target = targets[key]
+            current_target = targets[key].long() 
+            # have to specify long, otherwise error
+            #  - RuntimeError: "nll_loss_forward_reduce_cuda_kernel_2d_index" not implemented for 'Int'
 
+            # print(current_prediction)
+            # print(current_target)
+            
             weight = None if not self.balance_classifications else self.classification_weights[key]
             current_loss = F.cross_entropy(
                 current_prediction,

@@ -121,19 +121,19 @@ def evaluate_on_test_dataset(
         with torch.cuda.amp.autocast(enabled=fp16):
             outputs = model.forward(sources)
             
-        if i == 0:
-            # print(f"Output assignments: {outputs.assignments}")
-            random_event = np.random.randint(0,len(outputs.assignments[0]))
-            print(f"Sources: {sources}")
-            print(f"Random event: {random_event}")
-            print(f"Len (...): {len(outputs.assignments)}")
-            print(f"Len ((assingments?)...): {len(outputs.assignments[0])}")
-            print(f"Shape ((assignments?)...): {np.shape(outputs.assignments[0])}")
-            print(f"Max, index t1 assignments: {torch.max(outputs.assignments[0][random_event]), torch.argmax(outputs.assignments[0][random_event])}")
-            # print(f"Len ((detections?)...): {len(outputs.assignments[4])}")
-            print(f"Len Input to extract_predictions: {len([np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf) for assignment in outputs.assignments])}")
-            print(f"Model event info: {model.event_info.product_symbolic_groups.values()}")
-            print(f"Model event info: {model.event_info.product_symbolic_groups}")
+        # if i == 0:
+        #     # print(f"Output assignments: {outputs.assignments}")
+        #     random_event = np.random.randint(0,len(outputs.assignments[0]))
+        #     print(f"Sources: {sources}")
+        #     print(f"Random event: {random_event}")
+        #     print(f"Len (...): {len(outputs.assignments)}")
+        #     print(f"Len ((assingments?)...): {len(outputs.assignments[0])}")
+        #     print(f"Shape ((assignments?)...): {np.shape(outputs.assignments[0])}")
+        #     print(f"Max, index t1 assignments: {torch.max(outputs.assignments[0][random_event]), torch.argmax(outputs.assignments[0][random_event])}")
+        #     # print(f"Len ((detections?)...): {len(outputs.assignments[4])}")
+        #     print(f"Len Input to extract_predictions: {len([np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf) for assignment in outputs.assignments])}")
+        #     print(f"Model event info: {model.event_info.product_symbolic_groups.values()}")
+        #     print(f"Model event info: {model.event_info.product_symbolic_groups}")
         
         # Old (pre 16may25 update)
         # assignment_indices = extract_predictions([
@@ -148,22 +148,22 @@ def evaluate_on_test_dataset(
             torch.sigmoid(detection).cpu().numpy()
             for detection in outputs.detections
         ])
-        if i == 0:
-            test_events = np.arange(0,5)
-            print(f"Events: {test_events}")
-            print(f"Detection probabilities (t1, t2, t3, t4):")
-            print(f"Shape detection probs:  {detection_probabilities.shape}")
-            for te in test_events:
-                print(f" {[ detection_probabilities[j][te] for j in range(4) ]}")
-            print(f"Assignment probabilities (max) (t1, t2, t3, t4):")
-            print(f"N. assignment probs: {len(outputs.assignments)}")
-            print(f"Shape of t's assignment probs: {[np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf).shape for assignment in outputs.assignments]}")
-#            interim_assignments = [np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf) for assignment in outputs.assignments]
-            interim_assignments = [ assignment_i.exp() for assignment_i in outputs.assignments ]
-            print(f"Interim assignments: {len(interim_assignments)}")
-            print(f"Interim assignments: {len(interim_assignments[0])}")
-            for te in test_events:
-                print(f" {[ torch.max(interim_assignments[k][te]) for k in range(4)] }")
+#         if i == 0:
+#             test_events = np.arange(0,5)
+#             print(f"Events: {test_events}")
+#             print(f"Detection probabilities (t1, t2, t3, t4):")
+#             print(f"Shape detection probs:  {detection_probabilities.shape}")
+#             for te in test_events:
+#                 print(f" {[ detection_probabilities[j][te] for j in range(4) ]}")
+#             print(f"Assignment probabilities (max) (t1, t2, t3, t4):")
+#             print(f"N. assignment probs: {len(outputs.assignments)}")
+#             print(f"Shape of t's assignment probs: {[np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf).shape for assignment in outputs.assignments]}")
+# #            interim_assignments = [np.nan_to_num(assignment.detach().cpu().numpy(), -np.inf) for assignment in outputs.assignments]
+#             interim_assignments = [ assignment_i.exp() for assignment_i in outputs.assignments ]
+#             print(f"Interim assignments: {len(interim_assignments)}")
+#             print(f"Interim assignments: {len(interim_assignments[0])}")
+#             for te in test_events:
+#                 print(f" {[ torch.max(interim_assignments[k][te]) for k in range(4)] }")
 
         classifications = {
             key: torch.softmax(classification, 1).cpu().numpy()
@@ -188,9 +188,9 @@ def evaluate_on_test_dataset(
 
             # Convert from log-probability to probability.
             assignment_probability = torch.exp(assignment_probability)
-            if (i==0) and (j==0):
-                print(f"Symmetries: {symmetries}")
-                print(f"Symmetries order: {symmetries.order()}")
+            # if (i==0) and (j==0):
+            #     print(f"Symmetries: {symmetries}")
+            #     print(f"Symmetries order: {symmetries.order()}")
 
             # Multiply by the symmetry factor to account for equivalent predictions.
             assignment_probability = symmetries.order() * assignment_probability
@@ -198,18 +198,18 @@ def evaluate_on_test_dataset(
             # Convert back to cpu and add to database.
             assignment_probabilities.append(assignment_probability.cpu().numpy())
         
-        if i == 0:
-            print(f"Assignment probabilities t1: {assignment_probabilities[0][0:5]}")
+        # if i == 0:
+        #     print(f"Assignment probabilities t1: {assignment_probabilities[0][0:5]}")
 
         for name_i, name in enumerate(model.event_info.product_particles):
             full_assignments[name].append(assignment_indices[name_i])
             full_assignment_probabilities[name].append(assignment_probabilities[name_i])
             full_detection_probabilities[name].append(detection_probabilities[name_i])
-            if i == 0:
-                print(f"Particle {name} assignments:")
-                print(f"  Assignments: {assignment_indices[name_i][0:5]}")
-                print(f"  Assignments probabilities: {assignment_probabilities[name_i][0:5]}")
-                print(f"  Detections probabilities: {detection_probabilities[name_i][0:5]}")
+            # if i == 0:
+            #     print(f"Particle {name} assignments:")
+            #     print(f"  Assignments: {assignment_indices[name_i][0:5]}")
+            #     print(f"  Assignments probabilities: {assignment_probabilities[name_i][0:5]}")
+            #     print(f"  Detections probabilities: {detection_probabilities[name_i][0:5]}")
 
         for key, regression in regressions.items():
             full_regressions[key].append(regression)
