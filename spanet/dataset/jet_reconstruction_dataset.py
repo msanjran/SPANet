@@ -111,6 +111,7 @@ class JetReconstructionDataset(Dataset):
             self.assignments = self.load_assignments(file, limit_index)
             self.regressions, self.regression_types = self.load_regressions(file, limit_index)
             self.classifications = self.load_classifications(file, limit_index)
+            self.custom_weights = self.load_custom_weights(file, limit_index)
 
             # Update size information after loading and limiting dataset.
             self.num_events = limit_index.shape[0]
@@ -280,6 +281,31 @@ class JetReconstructionDataset(Dataset):
                     add_target(*tree_key_data([particle, daughter], target))
 
         return targets
+    
+    def load_custom_weights(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Tensor:
+        '''
+            Function to load in event weights from:
+            https://github.com/guanfacin24/SPANet/tree/dev
+        '''
+        weights = torch.from_numpy(
+            np.ones_like(limit_index, dtype = float)
+        )
+        weight_types = self.event_info.custom_weights[SpecialKey.Event]
+        num_weights = len(weight_types)
+        if num_weights > 1:
+            print(
+                "More than one custom event weight type specified\n"
+                "Weights will be multiplied"
+            )
+
+        for weight in weight_types:
+            try:
+                weights *= torch.from_numpy(
+                    hdf5_file[SpecialKey.CustomWeights][SpecialKey.Event][weight][limit_index]
+                )
+            except KeyError: continue
+
+        return weights
 
     def compute_source_statistics(
             self,

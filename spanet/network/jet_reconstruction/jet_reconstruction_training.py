@@ -241,6 +241,9 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         if self.balance_jets:
             weights *= self.jet_weights_tensor[batch.num_vectors]
 
+        # Balance using custom weights
+        weights *= self.custom_weights_tensor[batch.item]
+        
         # Take the weighted average of the symmetric loss terms.
         masks = masks.unsqueeze(1)
         symmetric_losses = (weights * symmetric_losses).sum(-1) / torch.clamp(masks.sum(-1), 1, None)

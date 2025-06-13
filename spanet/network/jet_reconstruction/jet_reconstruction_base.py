@@ -45,6 +45,11 @@ class JetReconstructionBase(pl.LightningModule):
 
             self.classification_weights = torch.nn.ParameterDict(classification_weights)
 
+        # Load custom weights
+        self.custom_weights_tensor = torch.nn.Parameter(
+            self.training_dataset.custom_weights, requires_grad = False
+        )
+
         # Helper arrays for permutation groups. Used for the partial-event loss functions.
         event_permutation_group = np.array(self.event_info.event_permutation_group)
         self.event_permutation_tensor = torch.nn.Parameter(torch.from_numpy(event_permutation_group), False)

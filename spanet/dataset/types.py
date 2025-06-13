@@ -113,6 +113,7 @@ class FeatureInfo(NamedTuple):
 
 
 ClassificationInfo = str
+CustomWeightsInfo = str
 
 
 class SpecialKey(str, Enum):
