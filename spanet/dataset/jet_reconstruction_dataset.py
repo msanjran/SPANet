@@ -505,5 +505,6 @@ class JetReconstructionDataset(Dataset):
             self.num_vectors[item],
             assignments,
             regressions,
-            classifications
+            classifications,
+            item
         )

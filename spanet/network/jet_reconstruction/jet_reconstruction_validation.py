@@ -116,7 +116,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
     def validation_step(self, batch, batch_idx) -> Dict[str, np.float32]:
         # Run the base prediction step
-        sources, num_jets, targets, regression_targets, classification_targets = batch
+        sources, num_jets, targets, regression_targets, classification_targets, item = batch
         jet_predictions, particle_scores, regressions, classifications = self.predict(sources)
 
         batch_size = num_jets.shape[0]

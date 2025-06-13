@@ -118,7 +118,7 @@ CustomWeightsInfo = str
 
 class SpecialKey(str, Enum):
     Mask = "MASK"
-    Weight = "WEIGHT"
+    Weight = "WEIGHT" # Particle weights
     Event = "EVENT"
     Inputs = "INPUTS"
     Targets = "TARGETS"
@@ -127,6 +127,7 @@ class SpecialKey(str, Enum):
     Permutations = "PERMUTATIONS"
     Classifications = "CLASSIFICATIONS"
     Embeddings = "EMBEDDINGS"
+    CustomWeights = "WEIGHTS" # Event weights
 
 
 class Source(NamedTuple):
@@ -157,6 +158,7 @@ class Batch(NamedTuple):
     assignment_targets: Tuple[AssignmentTargets, ...]
     regression_targets: Dict[str, Tensor]
     classification_targets: Dict[str, Tensor]
+    item: int
 
 
 class Outputs(NamedTuple):
