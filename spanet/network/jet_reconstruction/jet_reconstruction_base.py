@@ -121,11 +121,22 @@ class JetReconstructionBase(pl.LightningModule):
         # This is not used in the main training script but is still useful for testing later.
         testing_dataset = None
         if self.options.testing_file:
+            if self.options.pNN_override is None:
+                pNN_reprocessing = None
+            else:
+                pNN_reprocessing = {
+                    'inpath': self.options.pNN_override['inpath'],
+                    'value': self.options.pNN_override['value']
+                }
+                # inpath: (SpecialKey.Inputs assumed)/"{inpath}"
+                # value: any value to replace inpath dataset with (converted to torch.float32)
+
             testing_dataset = self.dataset(
                 data_file=self.options.testing_file,
                 event_info=self.options.event_info_file,
                 limit_index=1.0,
-                vector_limit=self.options.limit_to_num_jets
+                vector_limit=self.options.limit_to_num_jets,
+                pNN_reprocessing=pNN_reprocessing
             )
 
         return training_dataset, validation_dataset, testing_dataset
