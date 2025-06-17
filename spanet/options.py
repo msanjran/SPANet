@@ -180,6 +180,9 @@ class Options(Namespace):
         # Number of processes to spawn for data collection.
         self.num_dataloader_workers: int = 4
 
+        # Whether or not to use a pNN reprocessing value for missing features.
+        self.pNN_override: dict = None
+
         # =========================================================================================
         # Training Options
         # =========================================================================================

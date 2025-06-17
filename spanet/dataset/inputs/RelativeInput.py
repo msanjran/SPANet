@@ -10,7 +10,10 @@ from spanet.dataset.inputs.BaseInput import BaseInput
 
 class RelativeInput(BaseInput):
     # noinspection PyAttributeOutsideInit
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray):
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, pNN_reprocessing: dict = None):
+        '''
+        Not sure what this input type is, nor how to implement pNN_reprocessing for it...
+        '''
         input_group = [SpecialKey.Inputs, self.input_name]
 
         # Load in the mask for this vector input
@@ -51,8 +54,11 @@ class RelativeInput(BaseInput):
                 current_mask = covariant_mask
                 current_index = covariant_index
                 covariant_index += 1
-
-            current_dataset.read_direct(current_data[current_index].numpy())
+            # current_dataset.read_direct(current_data[current_index].numpy())
+            if pNN_reprocessing is not None and pNN_reprocessing['inpath'] == f"{self.input_name}/{feature}":
+                current_data[current_index] = torch.full_like(current_data[current_index], pNN_reprocessing['value'], dtype=torch.float32)
+            else:
+                current_dataset.read_direct(current_data[current_index].numpy())
             if log_transform:
                 # torch.clamp_(current_data[current_index], min=1e-6)
                 current_data[current_index] += 1

@@ -15,7 +15,8 @@ def create_source_input(
         hdf5_file: h5py.File,
         input_name: str,
         num_events: int,
-        limit_index: np.ndarray
+        limit_index: np.ndarray,
+        pNN_reprocessing: Dict = None
 ) -> BaseInput:
     source_class = {
         InputType.Sequential: SequentialInput,
@@ -23,4 +24,4 @@ def create_source_input(
         InputType.Global: GlobalInput,
     }[event_info.input_type(input_name)]
 
-    return source_class(event_info, hdf5_file, input_name, num_events, limit_index)
+    return source_class(event_info, hdf5_file, input_name, num_events, limit_index, pNN_reprocessing)

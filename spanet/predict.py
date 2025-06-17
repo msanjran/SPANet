@@ -100,14 +100,21 @@ def main(log_directory: str,
          output_vectors: bool,
          gpu: bool,
          fp16: bool,
-         output_directory: Optional[str]):
-    
+         output_directory: Optional[str],
+         pNN_inpath: Optional[str] = None,
+         pNN_value: Optional[float] = None):
+    pNN_reprocessing = None
+    if pNN_inpath is not None and pNN_value is not None:
+        pNN_reprocessing = {
+            'inpath': pNN_inpath,
+            'value': pNN_value
+            }
     # load model at particular checkpoint
     if checkpoint is not None:
         checkpoint = os.path.basename(checkpoint)
-        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint)
+        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint, pNN_reprocessing=pNN_reprocessing)
     else:
-        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16)
+        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, pNN_reprocessing=pNN_reprocessing)
         
     # New --> but that doesn't really suit us
     # model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint)
@@ -177,6 +184,14 @@ if __name__ == '__main__':
     parser.add_argument("-od", "--output_directory", type=str, 
                         default=None,
                         help="Where to save output to (creates 'version_x' directory inside it)")
+    
+    parser.add_argument("--pNN_inpath", type=str, default=None,
+                        help="Path to dataset we want to replace values with for pNN inference"
+                        " - don't need to include SpecialKey.Inputs")
+
+    parser.add_argument("--pNN_value", type=float, default=None,
+                        help="Value to replace the pNN_inpath dataset with")
+
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)

@@ -15,7 +15,8 @@ class BaseInput(ABC):
             hdf5_file: h5py.File,
             input_name: str,
             num_events: int,
-            limit_index: np.ndarray
+            limit_index: np.ndarray,
+            pNN_reprocessing: Dict = None
     ):
         super(BaseInput, self).__init__()
 
@@ -24,7 +25,7 @@ class BaseInput(ABC):
         self.num_events = num_events
         self.input_features = self.event_info.input_features[input_name]
 
-        self.load(hdf5_file, limit_index)
+        self.load(hdf5_file, limit_index, pNN_reprocessing)
 
     @property
     def reconstructable(self) -> bool:
@@ -40,7 +41,7 @@ class BaseInput(ABC):
             raise KeyError(f"{key} not found in group {group_string}")
 
     @abstractmethod
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray):
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, pNN_reprocessing: Dict = None):
         raise NotImplementedError()
 
     @abstractmethod

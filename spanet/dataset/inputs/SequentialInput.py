@@ -11,7 +11,7 @@ from spanet.dataset.inputs.BaseInput import BaseInput
 class SequentialInput(BaseInput):
 
     # noinspection PyAttributeOutsideInit
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray):
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, pNN_reprocessing: dict = None):
         input_group = [SpecialKey.Inputs, self.input_name]
 
         # Load in the mask for this vector input
@@ -23,7 +23,12 @@ class SequentialInput(BaseInput):
         source_data = torch.empty(num_features, self.num_events, num_jets, dtype=torch.float32)
 
         for index, (feature, _, log_transform) in enumerate(self.event_info.input_features[self.input_name]):
-            self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
+            # self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
+            # apply pNN_reprocessing if applicable...
+            if pNN_reprocessing is not None and pNN_reprocessing['inpath'] == f"{self.input_name}/{feature}":
+                source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
+            else:
+                self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
             if log_transform:
                 # torch.clamp_(source_data[index], min=1e-6)
                 source_data[index] += 1

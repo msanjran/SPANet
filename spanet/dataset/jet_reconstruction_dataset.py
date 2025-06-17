@@ -42,7 +42,8 @@ class JetReconstructionDataset(Dataset):
         limit_index: TLimitIndex = 1.0,
         randomization_seed: int = 0,
         vector_limit: int = 0,
-        partial_events: bool = True
+        partial_events: bool = True,
+        pNN_reprocessing: Dict = None
     ):
         """ A container class for reading in jet reconstruction datasets.
 
@@ -65,6 +66,8 @@ class JetReconstructionDataset(Dataset):
             Limit the event to a specific number of vectors.
         partial_events : bool
             Whether to allow training on partial events, not just complete events.
+        pNN_reprocessing : dict
+            A dictionary containing the pNN reprocessing parameters ('inpath': str, 'val': float, 'dtype': str)
         """
         super(JetReconstructionDataset, self).__init__()
 
@@ -92,9 +95,19 @@ class JetReconstructionDataset(Dataset):
             # Adjust limit index into a standard format.
             limit_index = self.compute_limit_index(limit_index, randomization_seed)
 
+            # Check if pNN reprocessing paramters are valid
+            if pNN_reprocessing is not None:
+                # Inpath being: 
+                pNN_reprocessing_split = pNN_reprocessing.split('/')
+                pNN_reprocessing_group = pNN_reprocessing_split[:-1]
+                pNN_reprocessing_key   = pNN_reprocessing_split[-1]
+                reprocessing_ds = self.dataset(file, [SpecialKey.Inputs, pNN_reprocessing_group], pNN_reprocessing_key)
+                print(f"Found valid pNN reprocessing dataset at {SpecialKey.Inputs}/{pNN_reprocessing_group}/{pNN_reprocessing_key}")
+                print(f" - shape: {reprocessing_ds.shape}, dtype: {reprocessing_ds.dtype}")
+
             # Load source features from hdf5 file, processing them depending on their type.
             self.sources = OrderedDict((
-                (input_name, create_source_input(self.event_info, file, input_name, self.num_events, limit_index))
+                (input_name, create_source_input(self.event_info, file, input_name, self.num_events, limit_index, pNN_reprocessing))
                 for input_name in self.event_info.input_names
             ))
 
@@ -136,6 +149,7 @@ class JetReconstructionDataset(Dataset):
             return hdf5_file[key_string]
         else:
             raise KeyError(f"{key} not found in group {group_string}")
+
 
     def compute_limit_index(self, limit_index: TLimitIndex, randomization_seed: int) -> NDArray[np.int64]:
         """ Take subsection of the data for training / validation

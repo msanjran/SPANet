@@ -50,7 +50,8 @@ def load_model(
     cuda: bool = False,
     fp16: bool = False,
     checkpoint: Optional[str] = None,
-    overrides: Optional[dict] = None
+    overrides: Optional[dict] = None,
+    pNN_reprocessing: Optional[dict] = None
 ) -> JetReconstructionModel:
     # Load the best-performing checkpoint on validation data
     if checkpoint is None:
@@ -81,6 +82,12 @@ def load_model(
     if overrides is not None:
         for key, value in overrides.items():
             setattr(options, key, value)
+    
+    if pNN_reprocessing is not None:
+        options.pNN_override = {
+            'inpath': pNN_reprocessing['inpath'],
+            'value': pNN_reprocessing['value']
+        }
 
     # Create model and disable all training operations for speed
     model = JetReconstructionModel(options)
