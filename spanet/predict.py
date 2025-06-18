@@ -131,8 +131,10 @@ def main(log_directory: str,
         output_directory = os.path.join(log_directory, "predictions")
         os.makedirs(output_directory, exist_ok=True)
     if output_file is None:
-        output_name = f"{os.path.splitext(os.path.basename(model.options.testing_file))[0]}_PREDICT{get_model_name(log_directory, checkpoint)}.h5"
-        output_file = os.path.join(output_directory, output_name)
+        output_name = f"{os.path.splitext(os.path.basename(model.options.testing_file))[0]}_PREDICT{get_model_name(log_directory, checkpoint)}"
+        if pNN_reprocessing is not None:
+            output_name = f"{output_name}_pNN{pNN_reprocessing['value']}"
+        output_file = os.path.join(output_directory, f"{output_name}.h5")
 
     # output_directory = os.path.join(output_directory, os.path.basename(log_directory), 'predict')
     # os.makedirs(output_directory, exist_ok=True)

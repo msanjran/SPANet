@@ -29,6 +29,8 @@ class GlobalInput(BaseInput):
             # apply pNN_reprocessing if applicable...
             if pNN_reprocessing is not None and pNN_reprocessing['inpath'] == f"{self.input_name}/{feature}":
                 source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
+                print(f"Apply pNN reprocessing for {pNN_reprocessing['inpath']} with value {pNN_reprocessing['value']}")
+                print(source_data[index])
             else:
                 self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
             if log_transform:

@@ -43,7 +43,7 @@ class JetReconstructionDataset(Dataset):
         randomization_seed: int = 0,
         vector_limit: int = 0,
         partial_events: bool = True,
-        pNN_reprocessing: Dict = None
+        pNN_reprocessing: dict = None
     ):
         """ A container class for reading in jet reconstruction datasets.
 
@@ -98,8 +98,8 @@ class JetReconstructionDataset(Dataset):
             # Check if pNN reprocessing paramters are valid
             if pNN_reprocessing is not None:
                 # Inpath being: 
-                pNN_reprocessing_split = pNN_reprocessing.split('/')
-                pNN_reprocessing_group = pNN_reprocessing_split[:-1]
+                pNN_reprocessing_split = pNN_reprocessing['inpath'].split('/')
+                pNN_reprocessing_group = pNN_reprocessing_split[0]
                 pNN_reprocessing_key   = pNN_reprocessing_split[-1]
                 reprocessing_ds = self.dataset(file, [SpecialKey.Inputs, pNN_reprocessing_group], pNN_reprocessing_key)
                 print(f"Found valid pNN reprocessing dataset at {SpecialKey.Inputs}/{pNN_reprocessing_group}/{pNN_reprocessing_key}")
