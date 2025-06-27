@@ -51,10 +51,10 @@ class EventInfo:
 
         # Information about auxiliary values attached to this event.
         regressions: FeynmanDict[str, List[RegressionInfo]],
-        classifications: FeynmanDict[str, List[ClassificationInfo]]
+        classifications: FeynmanDict[str, List[ClassificationInfo]],
 
         # Custom event weights
-        custom_weights: FeynmannDict[str, List[CustomWeightsInfo]]
+        custom_weights: FeynmanDict[str, List[CustomWeightsInfo]] = None
     ):
 
         self.input_types = input_types
@@ -328,8 +328,13 @@ class EventInfo:
         # All Custom Weights code from here:
         # - https://github.com/guanfacin24/SPANet/tree/dev
         custom_weights = key_with_default(config, SpecialKey.CustomWeights, default={})
-        custom_weights = feynman_fill(custom_weights, event_particles, product_particles, constructor=list)
+        if custom_weights == {}:
+            backwards_compatibility = True
+            custom_weights = None
+        else:
+            custom_weights = feynman_fill(custom_weights, event_particles, product_particles, constructor=list)
 
+        # Making this 'backwards' compatible for when no weights...
         return cls(
             input_types,
             input_features,
@@ -339,3 +344,22 @@ class EventInfo:
             classifications,
             custom_weights
         )
+        # if backwards_compatibility:
+        #     return cls(
+        #         input_types,
+        #         input_features,
+        #         event_particles,
+        #         product_particles,
+        #         regressions,
+        #         classifications
+        #     )
+        # else:
+        #     return cls(
+        #         input_types,
+        #         input_features,
+        #         event_particles,
+        #         product_particles,
+        #         regressions,
+        #         classifications,
+        #         custom_weights
+        #     )

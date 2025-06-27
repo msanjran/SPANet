@@ -137,6 +137,10 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             self.log("loss/symmetric_loss", kl_loss, sync_dist=True)
             if torch.isnan(kl_loss):
                 raise ValueError("Symmetric KL Loss has diverged.")
+            
+        # print(f"kl_loss:")
+        # print(f" - shape: {kl_loss.shape}")
+        # print(f" - value: {kl_loss}")
 
         return total_loss + [self.options.kl_loss_scale * kl_loss]
 
@@ -147,6 +151,8 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             targets:  Dict[str, Tensor]
     ) -> List[Tensor]:
         regression_terms = []
+        # TODO: add custom_weights for regression_loss
+        # print(f"regression_loss:")
 
         for key in targets:
             current_target_type = self.training_dataset.regression_types[key]
@@ -168,6 +174,9 @@ class JetReconstructionTraining(JetReconstructionNetwork):
 
             with torch.no_grad():
                 self.log(f"loss/regression/{key}", current_loss, sync_dist=True)
+            
+            # print(f" - {key} shape: {current_loss.shape}")
+            # print(f" - {key} value: {current_loss}")
 
             regression_terms.append(self.options.regression_loss_scale * current_loss)
 
@@ -177,13 +186,19 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             self,
             total_loss: List[Tensor],
             predictions: Dict[str, Tensor],
-            targets: Dict[str, Tensor]
+            targets: Dict[str, Tensor],
+            use_custom_weights: Tensor = None
     ) -> List[Tensor]:
         classification_terms = []
 
+        # print(f"classification_loss:")
         for key in targets:
-            current_prediction = predictions[key]
-            current_target = targets[key].long() 
+            current_prediction = predictions[key] # shape (N_batch, N_classes)
+            current_target = targets[key].long() # shape (N_batch,)
+
+            # print(f" - {key} prediction shape: {current_prediction.shape}")
+            # print(f" - {key} targer shape: {current_target.shape}")
+            
             # have to specify long, otherwise error
             #  - RuntimeError: "nll_loss_forward_reduce_cuda_kernel_2d_index" not implemented for 'Int'
 
@@ -191,17 +206,39 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             # print(current_target)
             
             weight = None if not self.balance_classifications else self.classification_weights[key]
-            current_loss = F.cross_entropy(
-                current_prediction,
-                current_target,
-                ignore_index=-1,
-                weight=weight
-            )
+            # if weight is None:
+            #     weight = torch.ones_like(use_custom_weights)
+            # weight *= use_custom_weights
+            # print(use_custom_weights)
+            if use_custom_weights is not None:
+                # overrides weight with custom weights
+                weight = use_custom_weights
+                current_loss = F.cross_entropy(
+                    current_prediction,
+                    current_target,
+                    ignore_index=-1,
+                    reduction='none'
+                )
+                current_loss = current_loss * weight
+                # now apply reduction --> default is mean
+                # https://docs.pytorch.org/docs/stable/generated/torch.nn.CrossEntropyLoss.html
+                current_loss = current_loss.mean()
+            else:
+                # default, original case
+                current_loss = F.cross_entropy(
+                    current_prediction,
+                    current_target,
+                    ignore_index=-1,
+                    weight=weight
+                )
 
             classification_terms.append(self.options.classification_loss_scale * current_loss)
 
             with torch.no_grad():
                 self.log(f"loss/classification/{key}", current_loss, sync_dist=True)
+            
+            # print(f" - {key} shape: {current_loss.shape}")
+            # print(f" - {key} value: {current_loss}")
 
         return total_loss + classification_terms
 
@@ -240,14 +277,28 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # Balance based on the number of jets in this event
         if self.balance_jets:
             weights *= self.jet_weights_tensor[batch.num_vectors]
-
-        # Balance using custom weights
-        weights *= self.custom_weights_tensor[batch.item]
         
-        # Take the weighted average of the symmetric loss terms.
+        # print(f"weights:")
+        # print(f" - shape: {weights.shape}")
+
+        # # Balance using custom weights
+        # # weights *= self.custom_weights_tensor[batch.item] # shape [B,]
+
+        # # print(f"custom_weights tensor:")
+        # # print(f" - shape: {self.custom_weights_tensor[batch.item].shape}")
+
+        # # Take the weighted average of the symmetric loss terms.
+        # print(f"masks:")
+        # print(f" - shape (before unsqueeze): {masks.shape}")
         masks = masks.unsqueeze(1)
+        # print(f" - shape (after unsqueeze): {masks.shape}")
         symmetric_losses = (weights * symmetric_losses).sum(-1) / torch.clamp(masks.sum(-1), 1, None)
         assignment_loss, detection_loss = torch.unbind(symmetric_losses, 1)
+
+        # print(f"assignent loss tensor:")
+        # print(f" - shape: {assignment_loss.shape}")
+        # print(f"detection loss tensor:")
+        # print(f" - shape: {detection_loss.shape}")
 
         # ===================================================================================================
         # Some basic logging
@@ -286,12 +337,23 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             total_loss = self.add_regression_loss(total_loss, outputs.regressions, batch.regression_targets)
 
         if self.options.classification_loss_scale > 0:
-            total_loss = self.add_classification_loss(total_loss, outputs.classifications, batch.classification_targets)
+            use_custom_weights = None
+            if self.custom_weights_tensor is not None:
+                use_custom_weights = self.custom_weights_tensor[batch.item]
+            total_loss = self.add_classification_loss(total_loss, outputs.classifications, batch.classification_targets, 
+                use_custom_weights=use_custom_weights)
+            # total_loss = self.add_classification_loss(total_loss, outputs.classifications, batch.classification_targets) 
+        
+        # print(f"total loss:")
+        # print(f" - len (before combining): {len(total_loss)}")
 
         # ===================================================================================================
         # Combine and return the loss
         # ---------------------------------------------------------------------------------------------------
         total_loss = torch.cat([loss.view(-1) for loss in total_loss])
+
+        # print(f" - shape (after combining): {total_loss.shape}")
+        # print(f" - values (after combining): {total_loss}")
 
         self.log("loss/total_loss", total_loss.sum(), sync_dist=True)
 

@@ -301,6 +301,9 @@ class JetReconstructionDataset(Dataset):
             Function to load in event weights from:
             https://github.com/guanfacin24/SPANet/tree/dev
         '''
+        # Avoids having to load in if not specified...
+        if self.event_info.custom_weights is None:
+            return None
         weights = torch.from_numpy(
             np.ones_like(limit_index, dtype = float)
         )
