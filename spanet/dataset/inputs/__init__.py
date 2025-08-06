@@ -16,7 +16,8 @@ def create_source_input(
         input_name: str,
         num_events: int,
         limit_index: np.ndarray,
-        pNN_reprocessing: dict = None
+        pNN_reprocessing: dict = None,
+        # custom_mask: np.ndarray = None
 ) -> BaseInput:
     source_class = {
         InputType.Sequential: SequentialInput,

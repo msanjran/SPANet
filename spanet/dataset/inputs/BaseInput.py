@@ -16,7 +16,8 @@ class BaseInput(ABC):
             input_name: str,
             num_events: int,
             limit_index: np.ndarray,
-            pNN_reprocessing: dict = None
+            pNN_reprocessing: dict = None,
+            # custom_mask: np.ndarray = None
     ):
         super(BaseInput, self).__init__()
 
@@ -41,7 +42,8 @@ class BaseInput(ABC):
             raise KeyError(f"{key} not found in group {group_string}")
 
     @abstractmethod
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, pNN_reprocessing: dict = None):
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, 
+             pNN_reprocessing: dict = None):
         raise NotImplementedError()
 
     @abstractmethod

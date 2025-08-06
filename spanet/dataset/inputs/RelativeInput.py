@@ -56,7 +56,8 @@ class RelativeInput(BaseInput):
                 covariant_index += 1
             # current_dataset.read_direct(current_data[current_index].numpy())
             if pNN_reprocessing is not None and pNN_reprocessing['inpath'] == f"{self.input_name}/{feature}":
-                current_data[current_index] = torch.full_like(current_data[current_index], pNN_reprocessing['value'], dtype=torch.float32)
+                raise NotImplementedError(f"pNN_reprocessing not applicable to 'RelativeInput'")
+                # current_data[current_index] = torch.full_like(current_data[current_index], pNN_reprocessing['value'], dtype=torch.float32)
             else:
                 current_dataset.read_direct(current_data[current_index].numpy())
             if log_transform:

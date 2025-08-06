@@ -183,6 +183,10 @@ class Options(Namespace):
         # Whether or not to use a pNN reprocessing value for missing features.
         self.pNN_override: dict = None
 
+        # Whether or not to use an event mask on the test dataset
+        # Please don't mess around with other event_mask options, it's not really handeled for that...
+        self.test_custom_mask: str = None
+
         # =========================================================================================
         # Training Options
         # =========================================================================================

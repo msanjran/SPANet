@@ -9,40 +9,55 @@ from spanet.dataset.jet_reconstruction_dataset import JetReconstructionDataset
 from spanet.dataset.types import Evaluation, SpecialKey, Outputs
 from spanet.evaluation import evaluate_on_test_dataset, load_model
 
-
 def create_hdf5_output(
     output_file: str,
     dataset: JetReconstructionDataset,
     evaluation: Evaluation,
-    full_outputs: Optional[Outputs]
+    full_outputs: Optional[Outputs],
+    pocket_output: bool = False
 ):
     print(f"Creating output file at: {output_file}")
     with h5py.File(output_file, 'w') as output:
-        # Copy over the source features from the input file.
-        with h5py.File(dataset.data_file, 'r') as input_dataset:
-            for input_name in input_dataset[SpecialKey.Inputs]:
-                for feature_name in input_dataset[SpecialKey.Inputs][input_name]:
-                    output.create_dataset(
-                        f"{SpecialKey.Inputs}/{input_name}/{feature_name}",
-                        data=input_dataset[SpecialKey.Inputs][input_name][feature_name]
-                    )
+
+        compression_method, compression_level = None, None
+        if pocket_output:
+            compression_method = "gzip"
+            compression_level  = 4
+
+        if not pocket_output:
+            # Copy over the source features from the input file.
+            with h5py.File(dataset.data_file, 'r') as input_dataset:
+                for input_name in input_dataset[SpecialKey.Inputs]:
+                    for feature_name in input_dataset[SpecialKey.Inputs][input_name]:
+                        output.create_dataset(
+                            f"{SpecialKey.Inputs}/{input_name}/{feature_name}",
+                            data=input_dataset[SpecialKey.Inputs][input_name][feature_name],
+                            compression=compression_method,
+                            compression_opts=compression_level
+                        )
 
         # Construct the assignment structure. Output both the top assignment and associated probabilities.
         for event_particle in dataset.event_info.event_particles:
             for i, product_particle in enumerate(dataset.event_info.product_particles[event_particle]):
                 output.create_dataset(
                     f"{SpecialKey.Targets}/{event_particle}/{product_particle}",
-                    data=evaluation.assignments[event_particle][:, i]
+                    data=evaluation.assignments[event_particle][:, i],
+                    compression=compression_method,
+                    compression_opts=compression_level
                 )
 
             output.create_dataset(
                 f"{SpecialKey.Targets}/{event_particle}/assignment_probability",
-                data=evaluation.assignment_probabilities[event_particle]
+                data=evaluation.assignment_probabilities[event_particle],
+                compression=compression_method,
+                compression_opts=compression_level
             )
 
             output.create_dataset(
                 f"{SpecialKey.Targets}/{event_particle}/detection_probability",
-                data=evaluation.detection_probabilities[event_particle]
+                data=evaluation.detection_probabilities[event_particle],
+                compression=compression_method,
+                compression_opts=compression_level
             )
 
             output.create_dataset(
@@ -50,19 +65,27 @@ def create_hdf5_output(
                 data=(
                     evaluation.detection_probabilities[event_particle] *
                     evaluation.assignment_probabilities[event_particle]
-                )
+                ),
+                compression=compression_method,
+                compression_opts=compression_level
             )
 
         # Simply copy over the structure of the regressions and classifications.
         for name, regression in evaluation.regressions.items():
-            output.create_dataset(f"{SpecialKey.Regressions}/{name}", data=regression)
+            output.create_dataset(f"{SpecialKey.Regressions}/{name}", data=regression,
+                compression=compression_method,
+                compression_opts=compression_level)
 
         for name, classification in evaluation.classifications.items():
-            output.create_dataset(f"{SpecialKey.Classifications}/{name}", data=classification)
+            output.create_dataset(f"{SpecialKey.Classifications}/{name}", data=classification,
+                compression=compression_method,
+                compression_opts=compression_level)
 
         if full_outputs is not None:
             for name, vector in full_outputs.vectors.items():
-                output.create_dataset(f"{SpecialKey.Embeddings}/{name}", data=vector)
+                output.create_dataset(f"{SpecialKey.Embeddings}/{name}", data=vector,
+                    compression=compression_method,
+                    compression_opts=compression_level)
 
 # Old: pre 16may25
 # def main(log_directory:str,
@@ -101,20 +124,30 @@ def main(log_directory: str,
          gpu: bool,
          fp16: bool,
          output_directory: Optional[str],
+         pNN_filepath: Optional[str] = None,
          pNN_inpath: Optional[str] = None,
-         pNN_value: Optional[float] = None):
+         pNN_values: Optional[list] = None,
+         pNN_name: Optional[str] = None,
+         custom_mask: Optional[str] = None,
+         pocket_output: bool = False):
     pNN_reprocessing = None
-    if pNN_inpath is not None and pNN_value is not None:
+    if ((pNN_inpath is not None)
+         and ((pNN_values is not None) or (pNN_filepath is not None))):
+
+        if pNN_filepath is not None and pNN_name is None:
+            raise ValueError(f"Given pNN filepath but name for it not given")
         pNN_reprocessing = {
-            'inpath': pNN_inpath,
-            'value': pNN_value
+            'inpath': pNN_inpath, # internal dataset path
+            'values': pNN_values, # value we wanna replace with 
+            'fpath':  pNN_filepath # values we wanna just use straight up
             }
     # load model at particular checkpoint
     if checkpoint is not None:
         checkpoint = os.path.basename(checkpoint)
-        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint, pNN_reprocessing=pNN_reprocessing)
-    else:
-        model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, pNN_reprocessing=pNN_reprocessing)
+    model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, 
+                       checkpoint=checkpoint, pNN_reprocessing=pNN_reprocessing, test_custom_mask=custom_mask)
+    # else:
+    #     model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, pNN_reprocessing=pNN_reprocessing)
         
     # New --> but that doesn't really suit us
     # model = load_model(log_directory, test_file, event_file, batch_size, gpu, fp16=fp16, checkpoint=checkpoint)
@@ -133,8 +166,14 @@ def main(log_directory: str,
     if output_file is None:
         output_name = f"{os.path.splitext(os.path.basename(model.options.testing_file))[0]}_PREDICT{get_model_name(log_directory, checkpoint)}"
         if pNN_reprocessing is not None:
-            output_name = f"{output_name}_pNN{pNN_reprocessing['value']}"
+            if pNN_reprocessing['values'] is not None:
+                for pnnv in pNN_reprocessing['values']:
+                    output_name = f"{output_name}_pNN{pnnv}"
+            elif pNN_reprocessing['fpath'] is not None:
+                output_name = f"{output_name}_pNN{pNN_name}"
         output_file = os.path.join(output_directory, f"{output_name}.h5")
+    else:
+        output_file = os.path.join(output_directory, output_file)
 
     # output_directory = os.path.join(output_directory, os.path.basename(log_directory), 'predict')
     # os.makedirs(output_directory, exist_ok=True)
@@ -146,8 +185,12 @@ def main(log_directory: str,
     #     # wtf does this do?
     #     # o_dir/version_x/predictions/<output>.h5
     #     output_file = os.path.join(output_directory, output_file)
-        
-    create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs)
+    
+    create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs, pocket_output=pocket_output)
+    # if not pocket_output:
+    #     create_hdf5_output(output_file, model.testing_dataset, evaluation, full_outputs)
+    # else:
+    #     create_pocket_output(output_file, model.testing_dataset, evaluation, full_outputs)
 
 
 if __name__ == '__main__':
@@ -186,14 +229,26 @@ if __name__ == '__main__':
     parser.add_argument("-od", "--output_directory", type=str, 
                         default=None,
                         help="Where to save output to (creates 'version_x' directory inside it)")
+
+    parser.add_argument("--pNN_filepath", type=str, default=None,
+                        help="Path to numpy file containing the pNN information we wanna use")
     
     parser.add_argument("--pNN_inpath", type=str, default=None,
-                        help="Path to dataset we want to replace values with for pNN inference"
+                        help="Path to dataset (internal) we want to replace values with for pNN inference"
                         " - don't need to include SpecialKey.Inputs")
 
-    parser.add_argument("--pNN_value", type=float, default=None,
-                        help="Value to replace the pNN_inpath dataset with")
+    parser.add_argument("--pNN_values", type=float, default=None, nargs='*',
+                        help="Value(s) to replace the pNN_inpath dataset with"
+                        " (will randomise wrt them if multiple)")
+    
+    parser.add_argument("--pNN_name", type=str, default=None,
+                        help="If pNN_filepath given, a name for it needs to be given")
 
+    parser.add_argument("--custom_mask", type=str, default=None,
+                        help="For inference, give path to custom event mask we want to load in and use")
+    
+    parser.add_argument("--pocket_output", action='store_true', default=False,
+                        help="If flagged, will not create the whole shebang , only the necessary assignments..")
 
     arguments = parser.parse_args()
     main(**arguments.__dict__)

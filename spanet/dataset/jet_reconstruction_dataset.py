@@ -43,7 +43,8 @@ class JetReconstructionDataset(Dataset):
         randomization_seed: int = 0,
         vector_limit: int = 0,
         partial_events: bool = True,
-        pNN_reprocessing: dict = None
+        pNN_reprocessing: dict = None,
+        custom_mask: np.ndarray = None
     ):
         """ A container class for reading in jet reconstruction datasets.
 
@@ -68,6 +69,10 @@ class JetReconstructionDataset(Dataset):
             Whether to allow training on partial events, not just complete events.
         pNN_reprocessing : dict
             A dictionary containing the pNN reprocessing parameters ('inpath': str, 'val': float, 'dtype': str)
+        custom_mask : np.ndarray
+            A numpy array filled with either:
+             - boolean (simple mask, len = len n_events)
+             - int (use case is for shuffling, len <= len n_events ) (not implemented yet)
         """
         super(JetReconstructionDataset, self).__init__()
 
@@ -91,9 +96,22 @@ class JetReconstructionDataset(Dataset):
                 if input_type in {InputType.Sequential, InputType.Relative}
             ][0]
             self.num_events = self.dataset(file, [SpecialKey.Inputs, first_key], SpecialKey.Mask).shape[0]
+            # if custom_mask is not None:
+            #     if ((custom_mask.dtype.kind == "b")
+            #         and (custom_mask.shape[0] == self.num_events)):
+            #         # is a mask
+            #         self.num_events = np.sum(custom_mask)
+            #     elif ((custom_mask.dtype.kind == "i")
+            #          and (custom_mask.shape[0] <= self.num_events)):
+            #          # is a shuffler (and/or a mask)
+            #          self.num_events = custom_mask.shape[0]
 
             # Adjust limit index into a standard format.
-            limit_index = self.compute_limit_index(limit_index, randomization_seed)
+            if custom_mask is None:
+                limit_index = self.compute_limit_index(limit_index, randomization_seed)
+            else:
+                print(f"Applying custom mask as limit index")
+                limit_index = self.compute_limit_index(np.where(custom_mask)[0], randomization_seed)
 
             # Check if pNN reprocessing paramters are valid
             if pNN_reprocessing is not None:
@@ -140,6 +158,12 @@ class JetReconstructionDataset(Dataset):
         # Optionally limit the dataset to a specific number of jets.
         if vector_limit > 0:
             self.limit_dataset_to_jet_count(vector_limit)
+        
+        # Apply custom mask if given
+        if custom_mask is not None:
+            print(f"Apply custom event mask")
+            # copy otherwise it remains in 'mmap' mode...
+            # self.limit_dataset_to_mask(custom_mask.copy())
 
     @staticmethod
     def dataset(hdf5_file: h5py.File, group: List[str], key: str) -> h5py.Dataset:

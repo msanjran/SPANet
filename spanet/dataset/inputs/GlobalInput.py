@@ -11,13 +11,16 @@ from spanet.dataset.inputs.BaseInput import BaseInput
 
 class GlobalInput(BaseInput):
 
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, pNN_reprocessing: dict = None):
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, 
+             pNN_reprocessing: dict = None):
         input_group = [SpecialKey.Inputs, self.input_name]
 
         # Try and load a mask for this global features. If none is present, assume all vectors are valid.
         try:
+            # if custom_mask is None:
             source_mask = torch.from_numpy(self.dataset(hdf5_file, input_group, SpecialKey.Mask)[:]).contiguous()
         except KeyError:
+            # num events already taken care of...
             source_mask = torch.ones(self.num_events, dtype=torch.bool)
 
         # Load in vector features.
@@ -27,12 +30,29 @@ class GlobalInput(BaseInput):
         for index, (feature, _, log_transform) in enumerate(self.event_info.input_features[self.input_name]):
             # self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
             # apply pNN_reprocessing if applicable...
+            print(f"Handling {SpecialKey.Inputs}/{self.input_name}/{feature}")
+            # self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
             if pNN_reprocessing is not None and pNN_reprocessing['inpath'] == f"{self.input_name}/{feature}":
-                source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
-                print(f"Apply pNN reprocessing for {pNN_reprocessing['inpath']} with value {pNN_reprocessing['value']}")
-                print(source_data[index])
+
+                if pNN_reprocessing['fpath'] is not None:
+                    print(f"Apply pNN reprocessing for {pNN_reprocessing['inpath']} with value(s) from {pNN_reprocessing['fpath']}")
+                    source_data[index] = torch.from_numpy(np.load(pNN_reprocessing['fpath'], mmap_mode='r').copy())
+                elif pNN_reprocessing['values'] is not None:
+                    ## TODO: handle randomisation with given values (currently not implemented)
+                    print(f"Apply pNN reprocessing for {pNN_reprocessing['inpath']} with value(s) {pNN_reprocessing['values']}")
+                    source_data[index] = torch.full_like(
+                        source_data[index], pNN_reprocessing['values'][0], dtype=torch.float32)
+                # source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
+                # print(f"Apply pNN reprocessing for {pNN_reprocessing['inpath']} with value(s) {pNN_reprocessing['values']}")
+                # print(source_data[index])
             else:
+                # if custom_mask is None:
                 self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
+                # else:
+                #     # applying a boolean mask appears to only work for a boolean mask for some reason...
+                #     self.dataset(hdf5_file, input_group, feature).read_direct(
+                #         source_data[index].numpy(), source_sel=np.s_[custom_mask])
+
             if log_transform:
                 source_data[index] += 1
                 torch.log_(source_data[index])

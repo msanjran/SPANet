@@ -51,7 +51,8 @@ def load_model(
     fp16: bool = False,
     checkpoint: Optional[str] = None,
     overrides: Optional[dict] = None,
-    pNN_reprocessing: Optional[dict] = None
+    pNN_reprocessing: Optional[dict] = None,
+    test_custom_mask: Optional[str] = None
 ) -> JetReconstructionModel:
     # Load the best-performing checkpoint on validation data
     if checkpoint is None:
@@ -86,8 +87,13 @@ def load_model(
     if pNN_reprocessing is not None:
         options.pNN_override = {
             'inpath': pNN_reprocessing['inpath'],
-            'value': pNN_reprocessing['value']
+            'values': pNN_reprocessing['values'], # list of values to randomise from
+            'fpath' : pNN_reprocessing['fpath']
         }
+    
+    if test_custom_mask is not None:
+        # is path to the numpy file containing the mask
+        options.test_custom_mask = test_custom_mask
 
     # Create model and disable all training operations for speed
     model = JetReconstructionModel(options)

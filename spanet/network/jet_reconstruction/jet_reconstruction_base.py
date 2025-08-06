@@ -128,17 +128,26 @@ class JetReconstructionBase(pl.LightningModule):
             else:
                 pNN_reprocessing = {
                     'inpath': self.options.pNN_override['inpath'],
-                    'value': self.options.pNN_override['value']
+                    'values': self.options.pNN_override['values'],
+                    'fpath': self.options.pNN_override['fpath']
                 }
+                if pNN_reprocessing['values'] is not None and len(pNN_reprocessing['values']) > 0:
+                    raise NotImplementedError(f"Not currently equipped to handle {len(pNN_reprocessing['values'])} pNN values")
                 # inpath: (SpecialKey.Inputs assumed)/"{inpath}"
                 # value: any value to replace inpath dataset with (converted to torch.float32)
+            
+            if self.options.test_custom_mask is None:
+                custom_mask = None
+            else:
+                custom_mask = np.load(self.options.test_custom_mask, mmap_mode='r')
 
             testing_dataset = self.dataset(
                 data_file=self.options.testing_file,
                 event_info=self.options.event_info_file,
                 limit_index=1.0,
                 vector_limit=self.options.limit_to_num_jets,
-                pNN_reprocessing=pNN_reprocessing
+                pNN_reprocessing=pNN_reprocessing,
+                custom_mask=custom_mask
             )
 
         return training_dataset, validation_dataset, testing_dataset

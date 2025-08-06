@@ -23,10 +23,12 @@ class SequentialInput(BaseInput):
         source_data = torch.empty(num_features, self.num_events, num_jets, dtype=torch.float32)
 
         for index, (feature, _, log_transform) in enumerate(self.event_info.input_features[self.input_name]):
+            print(f"Handling {SpecialKey.Inputs}/{self.input_name}/{feature}")
             # self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
             # apply pNN_reprocessing if applicable...
             if pNN_reprocessing is not None and pNN_reprocessing['inpath'] == f"{self.input_name}/{feature}":
-                source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
+                raise NotImplementedError(f"pNN_reprocessing not applicable to 'SequentialInput'")
+                # source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
             else:
                 self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
             if log_transform:
