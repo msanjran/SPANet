@@ -23,6 +23,10 @@ from pytorch_lightning.callbacks import (
 
 from spanet import JetReconstructionModel, Options
 
+def clean_fpath(fpath):
+    fpath = fpath.replace("'","")
+    fpath = fpath.replace(",","")
+    return fpath
 
 def main(
         event_file: str,
@@ -49,6 +53,14 @@ def main(
         limit_dataset: Optional[float],
         random_seed: int,
     ):
+    ## clean because trainer_submit.py being annoying as f
+    event_file = clean_fpath(event_file)
+    training_file = clean_fpath(training_file)
+    validation_file = clean_fpath(validation_file)
+    if options_file is not None:
+        options_file = clean_fpath(options_file)
+
+    random_seed = int(random_seed)
 
     # Whether or not this script version is the master run or a worker
     master = True
@@ -259,7 +271,7 @@ if __name__ == '__main__':
     parser.add_argument("-v", "--verbose", action='store_true',
                         help="Output additional information to console and log.")
 
-    parser.add_argument("-r", "--random_seed", type=int, default=0,
+    parser.add_argument("-r", "--random_seed", default=0,
                         help="Set random seed for cross-validation.")
 
     parser.add_argument("-ts", "--torch_script", action='store_true',

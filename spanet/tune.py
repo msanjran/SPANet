@@ -166,12 +166,6 @@ def tune_spanet(
         progress_reporter=reporter,
     )
     
-<<<<<<< HEAD
-    resources_per_trial = {"cpu": 1}
-    if gpus_per_trial != 0:
-        resources_per_trial = {"cpu": 1, "gpu": gpus_per_trial}
-    
-=======
     base_options = get_base_options(base_options_file)
     spanet_trial = set_spanet_trial(base_options, num_epochs, cpus_per_trial, workers_per_cpu)
 
@@ -181,7 +175,6 @@ def tune_spanet(
         run_config=run_config,
     ) 
 
->>>>>>> upstream/master
     tuner = tune.Tuner(
         ray_trainer,
         param_space={"train_loop_config": config},
