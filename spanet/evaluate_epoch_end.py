@@ -60,6 +60,7 @@ def evaluate_on_split_acc(model: JetReconstructionModel, data_mode):
     accuracies = {}
     acc_jet = {}
     acc_particle = {}
+    acc_classification = {}
     i_of_j = []
     hadronic_tops = 4
     for j in range(hadronic_tops+1):
@@ -68,10 +69,12 @@ def evaluate_on_split_acc(model: JetReconstructionModel, data_mode):
             acc_jet[i_of_j_name] = { 'accuracy':[], 'len':[], 'sum':[] }
             acc_particle[i_of_j_name] = { 'accuracy':[], 'len':[], 'sum':[] }
             i_of_j.append(i_of_j_name)
+            
     acc_particle['sk_metrics'] = {'accuracy':[], 'f_score':[], 'sensitivity':[], 'specificity':[]}
-    
+    acc_classification['EVENT/reco_tops_accuracy'] = {'accuracy':[]} # hard coded ah
     accuracies['jet'] = acc_jet
     accuracies['particle'] = acc_particle
+    accuracies['classifications'] = acc_classification
     
     if data_mode == 0:
         split_dataloader = model.train_dataloader()
@@ -84,10 +87,17 @@ def evaluate_on_split_acc(model: JetReconstructionModel, data_mode):
         metrics = accuracy_calculator(model, batch)
         # somewhat hardcoded
         for accuracy_type in accuracies:
+        
+            if accuracy_type == 'classifications':
+                for classification_key in accuracies[f'{accuracy_type}']:
+                    accuracies[f'{accuracy_type}'][classification_key]['accuracy'].append(metrics[f'{accuracy_type}/{classification_key}'])
+                continue
+                
             for x in i_of_j:
                 accuracies[f'{accuracy_type}'][x]['accuracy'].append(metrics[f'{accuracy_type}/accuracy_{x}'])
                 accuracies[f'{accuracy_type}'][x]['len'].append(metrics[f'{accuracy_type}/accuracy_{x}_len'])
                 accuracies[f'{accuracy_type}'][x]['sum'].append(metrics[f'{accuracy_type}/accuracy_{x}_sum'])
+                
         for sk_metric in accuracies['particle']['sk_metrics']:
             accuracies['particle']['sk_metrics'][sk_metric].append(metrics[f'particle/{sk_metric}'])
 
@@ -137,6 +147,11 @@ def accuracy_calculator(model: JetReconstructionModel, batch: Batch):
         for i, (target, mask) in enumerate(targets):
             stacked_targets[i] = target.detach().cpu().numpy()
             stacked_masks[i] = mask.detach().cpu().numpy()
+            
+        classification_targets = {
+            key: value.detach().cpu().numpy()
+            for key, value in classification_targets.items()
+        }
 
         metrics = model.evaluator.full_report_string(jet_predictions, stacked_targets, stacked_masks, prefix="Purity/")
 
@@ -146,11 +161,11 @@ def accuracy_calculator(model: JetReconstructionModel, batch: Batch):
                     prediction[:, indices] = np.sort(prediction[:, indices])
                     target[:, indices] = np.sort(target[:, indices])
 
-        metrics.update(update_metrics(model, jet_predictions, particle_scores, stacked_targets, stacked_masks))
+        metrics.update(update_metrics(model, jet_predictions, particle_scores, stacked_targets, stacked_masks, classifications, classification_targets))
 
         return metrics
 
-def update_metrics(model: JetReconstructionModel, jet_predictions, particle_scores, stacked_targets, stacked_masks):
+def update_metrics(model: JetReconstructionModel, jet_predictions, particle_scores, stacked_targets, stacked_masks, classifications, classification_targets):
     '''
     Analog to mss_compute_metrics (simplified version for h2t)
     '''
@@ -190,6 +205,11 @@ def update_metrics(model: JetReconstructionModel, jet_predictions, particle_scor
     particle_predictions = particle_predictions.ravel()
     for name, metric in model.particle_metrics.items():
         metrics[f"particle/{name}"] = metric(particle_targets, particle_predictions)
+        
+    # KEY = EVENT/reco_tops
+    for key in classifications:
+        accuracy = (classifications[key] == classification_targets[key])
+        metrics[f"classifications/{key}_accuracy"] = accuracy.mean()
 
     # empty function
     # for name, metric in model.particle_score_metrics.items():
@@ -208,6 +228,7 @@ def update_metrics(model: JetReconstructionModel, jet_predictions, particle_scor
     metrics["validation_accuracy"] = metrics[f"jet/accuracy_{num_targets}_of_{num_targets}"]
 
     return metrics
+    
 
 def loss_calculator(model: JetReconstructionModel, batch: Batch):
         '''
@@ -250,6 +271,9 @@ def loss_calculator(model: JetReconstructionModel, batch: Batch):
 
         if model.options.detection_loss_scale > 0:
             total_loss.append(detection_loss)
+        
+#        if model.options.classification_loss_scale > 0:
+#            total_loss = self.add_classification_loss(total_loss, outputs.classifications, batch.classification_targets)
             
         total_loss = torch.cat([loss.view(-1) for loss in total_loss])
 
