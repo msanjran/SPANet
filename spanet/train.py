@@ -3,6 +3,10 @@ from typing import Optional
 from os import getcwd, makedirs, environ
 import shutil
 import json
+import random
+import numpy as np
+import sys
+import os
 
 import torch
 import pytorch_lightning as pl
@@ -22,6 +26,35 @@ from pytorch_lightning.callbacks import (
 )
 
 from spanet import JetReconstructionModel, Options
+
+def set_global_seed(level: str, seed: int) -> None:
+    ''' Set seed for reproducibility '''
+    print(f"Setting global seed for training")
+    print(f" - {level}: {seed}")
+
+    if level == "pl_everything":
+        pl.seed_everything(seed)
+    elif level == "manual_everything":
+
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+    else:
+        raise NotImplementedError(f"{level} not recognised seed setting")
+
+# def set_seed(seed: int = 42) -> None:
+#     """Set seeds for reproducibility."""
+#     random.seed(seed)
+#     np.random.seed(seed)
+#     torch.manual_seed(seed)
+#     torch.cuda.manual_seed_all(seed)
+#     torch.backends.cudnn.deterministic = True
+#     torch.backends.cudnn.benchmark = False
+
+# set_seed(0)
 
 def clean_fpath(fpath):
     fpath = fpath.replace("'","")
@@ -52,7 +85,22 @@ def main(
         batch_size: Optional[int],
         limit_dataset: Optional[float],
         random_seed: int,
+        custom_mask_train: Optional[str],
+        custom_mask_val: Optional[str],
+        rand_control: Optional[str],
+        rand_control_seed: Optional[int],
+        clip_train: Optional[str],
+        clip_val: Optional[str]
     ):
+
+    # args_dict = locals()
+    # print(args_dict)
+
+    # sys.exit()
+
+    if rand_control is not None and rand_control_seed is not None:
+        set_global_seed(rand_control, rand_control_seed)
+
     ## clean because trainer_submit.py being annoying as f
     event_file = clean_fpath(event_file)
     training_file = clean_fpath(training_file)
@@ -108,6 +156,32 @@ def main(
         if master:
             print(f"Overriding Number of Epochs: {epochs}")
         options.epochs = epochs
+    
+    if custom_mask_train is not None:
+        if master:
+            print(f"Overriding 'train_mask'")
+        options.train_custom_mask = custom_mask_train
+    
+    if custom_mask_val is not None:
+        if master:
+            print(f"Overriding 'val_mask'")
+        options.val_custom_mask = custom_mask_val
+    
+    if clip_train is not None:
+        if master:
+            print(f"Overriding 'clip_train'")
+        options.clip_train = clip_train
+    
+    if clip_val is not None:
+        if master:
+            print(f"Overriding 'clip_val'")
+        options.clip_val = clip_val
+
+    # bookkeeping
+    if rand_control is not None and rand_control_seed is not None:
+        options.global_seed_method = rand_control
+        options.global_seed_number = rand_control_seed
+    
 
     if random_seed > 0:
         options.dataset_randomization = random_seed
@@ -142,6 +216,8 @@ def main(
                     parameter.requires_grad_(False)
 
     # Construct the logger for this training run. Logs will be saved in {logdir}/{name}/version_i
+    if log_dir is not None:
+        os.makedirs(log_dir, exist_ok=True) # idk
     log_dir = getcwd() if log_dir is None else log_dir
     logger = TensorBoardLogger(save_dir=log_dir, name=name)
     # logger = (
@@ -209,6 +285,12 @@ def main(
             json.dump(options.__dict__, json_file, indent=4)
 
         shutil.copy2(options.event_info_file, f"{trainer.logger.log_dir}/event.yaml")
+
+        # with open(f"{trainer.logger.log_dir}/args.json", "w") as json_file:
+        #     json.dump(args_dict, json_file, indent=4)
+
+        # copy the arguments into an 'args' file so easier to track...
+        
 
     trainer.fit(model, ckpt_path=checkpoint)
     # -------------------------------------------------------------------------------------------------------
@@ -279,5 +361,24 @@ if __name__ == '__main__':
 
     parser.add_argument("--profile", action='store_true',
                         help="Profile network for a single training epoch.")
+
+    parser.add_argument("--custom_mask_train", default=None,
+                        help="Path to a 'npy' file containing boolean event mask (train)")
+    
+    parser.add_argument("--custom_mask_val", default=None, type=str, 
+                        help="Path to a 'npy' file containing boolean event mask (val)")
+
+    parser.add_argument("--rand_control", type=str, default=None, choices=["pl_everything", "manual_everything"],
+                        help="What seed control level to use --> please only use if 'random_seed' is 0")
+    
+    parser.add_argument("--rand_control_seed", type=int, default=None,
+                        help="What seed to use for the 'rand_control' argument"
+                        " (must be given if you wanna use the above)")
+    
+    parser.add_argument("--clip_train", default=None,
+                        help="Path to file describing inputs to clip for training dataset")
+    
+    parser.add_argument("--clip_val", default=None,
+                        help="Path to file describing inputs to clip for validation dataset")
 
     main(**parser.parse_args().__dict__)

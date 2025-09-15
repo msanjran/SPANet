@@ -17,6 +17,7 @@ def create_source_input(
         num_events: int,
         limit_index: np.ndarray,
         pNN_reprocessing: dict = None,
+        clip_dict: dict = None
         # custom_mask: np.ndarray = None
 ) -> BaseInput:
     source_class = {
@@ -25,4 +26,4 @@ def create_source_input(
         InputType.Global: GlobalInput,
     }[event_info.input_type(input_name)]
 
-    return source_class(event_info, hdf5_file, input_name, num_events, limit_index, pNN_reprocessing)
+    return source_class(event_info, hdf5_file, input_name, num_events, limit_index, pNN_reprocessing, clip_dict)

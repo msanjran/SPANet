@@ -11,11 +11,17 @@ from spanet.dataset.inputs.BaseInput import BaseInput
 class SequentialInput(BaseInput):
 
     # noinspection PyAttributeOutsideInit
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, pNN_reprocessing: dict = None):
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, 
+        pNN_reprocessing: dict = None, clip_dict: dict = None):
         input_group = [SpecialKey.Inputs, self.input_name]
 
         # Load in the mask for this vector input
         source_mask = torch.from_numpy(self.dataset(hdf5_file, input_group, SpecialKey.Mask)[:]).contiguous()
+        if (clip_dict is not None) and (f"{self.input_name}:MASK" in clip_dict):
+            clipping_info = clip_dict[f"{self.input_name}:MASK"]
+            print(f"APPLYING CLIPPING FOR {self.input_name}:MASK")
+            print(f" - upper: {clipping_info['upper_bound']}")
+            source_mask[:,clipping_info["upper_bound"]:] = False
 
         # Load in vector features into a pre-made buffer
         num_jets = source_mask.shape[1]
@@ -28,7 +34,14 @@ class SequentialInput(BaseInput):
             # apply pNN_reprocessing if applicable...
             if pNN_reprocessing is not None and pNN_reprocessing['inpath'] == f"{self.input_name}/{feature}":
                 raise NotImplementedError(f"pNN_reprocessing not applicable to 'SequentialInput'")
-                # source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
+                # source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32)
+            elif (clip_dict is not None) and (f"{self.input_name}:{feature}" in clip_dict):
+                self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
+                clipping_info = clip_dict[f"{self.input_name}:{feature}"]
+                print(f"APPLYING CLIPPING FOR {self.input_name}:{feature}")
+                print(f" - lower: {clipping_info['lower_bound']}, upper: {clipping_info['upper_bound']}")
+                source_data[index] = torch.clip(
+                    source_data[index], clipping_info["lower_bound"], clipping_info["upper_bound"])
             else:
                 self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
             if log_transform:

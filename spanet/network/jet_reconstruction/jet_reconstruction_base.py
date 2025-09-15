@@ -2,6 +2,7 @@ import pytorch_lightning as pl
 import numpy as np
 import torch
 from torch import nn
+import json
 
 # noinspection PyProtectedMember
 from torch.utils.data import DataLoader
@@ -42,8 +43,12 @@ class JetReconstructionBase(pl.LightningModule):
                 key: torch.nn.Parameter(value, requires_grad=False)
                 for key, value in self.training_dataset.compute_classification_balance().items()
             }
-
             self.classification_weights = torch.nn.ParameterDict(classification_weights)
+            # classification_counts = {
+            #     key: torch.nn.Parameter(value, requires_grad=False)
+            #     for key, value in self.training_dataset.compute_classification_class_counts().items()
+            # }
+            # self.classification_counts = torch.nn.ParameterDict(classification_counts)
 
         # Load custom weights
         self.custom_weights_tensor = None
@@ -82,6 +87,11 @@ class JetReconstructionBase(pl.LightningModule):
     @property
     def event_info(self):
         return self.training_dataset.event_info
+    
+    def open_clip(self, fpath):
+        with open(fpath, "r") as file:
+            config = json.load(file)
+        return config
 
     def create_datasets(self):
         event_info_file = self.options.event_info_file
@@ -102,21 +112,43 @@ class JetReconstructionBase(pl.LightningModule):
 
         # Construct primary training datasets
         # Note that only the training dataset should be limited to full events or partial events.
+        if self.options.train_custom_mask is None:
+            use_train_custom_mask = None
+        else:
+            use_train_custom_mask = np.load(self.options.train_custom_mask, mmap_mode='r')
+        if self.options.clip_train is None:
+            use_clip_train = None
+        else:
+            use_clip_train = self.open_clip(self.options.clip_train)
         training_dataset = self.dataset(
             data_file=training_file,
             event_info=event_info_file,
             limit_index=training_range,
             vector_limit=self.options.limit_to_num_jets,
             partial_events=self.options.partial_events,
-            randomization_seed=self.options.dataset_randomization
+            randomization_seed=self.options.dataset_randomization,
+            custom_mask=use_train_custom_mask,
+            clip_dict=use_clip_train
         )
 
+        if self.options.val_custom_mask is None:
+            use_val_custom_mask = None
+        else:
+            use_val_custom_mask = np.load(self.options.val_custom_mask, mmap_mode='r')
+        if self.options.clip_val is None:
+            use_clip_val = None
+        else:
+            use_clip_val = self.open_clip(self.options.clip_val)
+        # don't use dataset randomization to validation
+        # so that our accuracies are more comparable
         validation_dataset = self.dataset(
             data_file=validation_file,
             event_info=event_info_file,
             limit_index=validation_range,
             vector_limit=self.options.limit_to_num_jets,
-            randomization_seed=self.options.dataset_randomization
+            # randomization_seed=self.options.dataset_randomization,
+            custom_mask=use_val_custom_mask,
+            clip_dict=use_clip_val
         )
 
         # Optionally construct the testing dataset.
@@ -140,14 +172,18 @@ class JetReconstructionBase(pl.LightningModule):
                 custom_mask = None
             else:
                 custom_mask = np.load(self.options.test_custom_mask, mmap_mode='r')
-
+            if self.options.clip_test is None:
+                use_clip_test = None
+            else:
+                use_clip_test = self.open_clip(self.options.clip_test)
             testing_dataset = self.dataset(
                 data_file=self.options.testing_file,
                 event_info=self.options.event_info_file,
                 limit_index=1.0,
                 vector_limit=self.options.limit_to_num_jets,
                 pNN_reprocessing=pNN_reprocessing,
-                custom_mask=custom_mask
+                custom_mask=custom_mask,
+                clip_dict=use_clip_test
             )
 
         return training_dataset, validation_dataset, testing_dataset

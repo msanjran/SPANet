@@ -186,6 +186,19 @@ class Options(Namespace):
         # Whether or not to use an event mask on the test dataset
         # Please don't mess around with other event_mask options, it's not really handeled for that...
         self.test_custom_mask: str = None
+        self.train_custom_mask: str = None
+        self.val_custom_mask: str = None
+
+        # isn't used --> purely for bookkeeping
+        # from the main scripts..
+        self.global_seed_method: str = None
+        self.global_seed_number: int = None
+        
+        # similarly --> give clippings for datasets
+        # one should really use the same one for all these
+        self.clip_train: str = None
+        self.clip_val: str = None
+        self.clip_test: str = None
 
         # =========================================================================================
         # Training Options

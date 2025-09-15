@@ -12,7 +12,7 @@ from spanet.dataset.inputs.BaseInput import BaseInput
 class GlobalInput(BaseInput):
 
     def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, 
-             pNN_reprocessing: dict = None):
+             pNN_reprocessing: dict = None, clip_dict: dict = None):
         input_group = [SpecialKey.Inputs, self.input_name]
 
         # Try and load a mask for this global features. If none is present, assume all vectors are valid.
@@ -45,6 +45,13 @@ class GlobalInput(BaseInput):
                 # source_data[index] = torch.full_like(source_data[index], pNN_reprocessing['value'], dtype=torch.float32) 
                 # print(f"Apply pNN reprocessing for {pNN_reprocessing['inpath']} with value(s) {pNN_reprocessing['values']}")
                 # print(source_data[index])
+            elif (clip_dict is not None) and (f"{self.input_name}:{feature}" in clip_dict):
+                self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())
+                print(f"APPLYING CLIPPING FOR {self.input_name}:{feature}")
+                clipping_info = clip_dict[f"{self.input_name}:{feature}"]
+                print(f" - lower: {clipping_info['lower_bound']}, upper: {clipping_info['upper_bound']}")
+                source_data[index] = torch.clip(
+                    source_data[index], clipping_info["lower_bound"], clipping_info["upper_bound"])
             else:
                 # if custom_mask is None:
                 self.dataset(hdf5_file, input_group, feature).read_direct(source_data[index].numpy())

@@ -17,6 +17,7 @@ class BaseInput(ABC):
             num_events: int,
             limit_index: np.ndarray,
             pNN_reprocessing: dict = None,
+            clip_dict: dict = None
             # custom_mask: np.ndarray = None
     ):
         super(BaseInput, self).__init__()
@@ -26,7 +27,7 @@ class BaseInput(ABC):
         self.num_events = num_events
         self.input_features = self.event_info.input_features[input_name]
 
-        self.load(hdf5_file, limit_index, pNN_reprocessing)
+        self.load(hdf5_file, limit_index, pNN_reprocessing, clip_dict)
 
     @property
     def reconstructable(self) -> bool:
@@ -43,7 +44,7 @@ class BaseInput(ABC):
 
     @abstractmethod
     def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, 
-             pNN_reprocessing: dict = None):
+             pNN_reprocessing: dict = None, clip_dict: dict = None):
         raise NotImplementedError()
 
     @abstractmethod

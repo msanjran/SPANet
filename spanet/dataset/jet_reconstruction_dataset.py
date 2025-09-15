@@ -44,7 +44,8 @@ class JetReconstructionDataset(Dataset):
         vector_limit: int = 0,
         partial_events: bool = True,
         pNN_reprocessing: dict = None,
-        custom_mask: np.ndarray = None
+        custom_mask: np.ndarray = None,
+        clip_dict: dict = None
     ):
         """ A container class for reading in jet reconstruction datasets.
 
@@ -73,11 +74,14 @@ class JetReconstructionDataset(Dataset):
             A numpy array filled with either:
              - boolean (simple mask, len = len n_events)
              - int (use case is for shuffling, len <= len n_events ) (not implemented yet)
+        clip_dict : dict
+            A dictionary containing information about which inputs to clip
         """
         super(JetReconstructionDataset, self).__init__()
 
         self.data_file = data_file
         self.event_info: EventInfo = event_info
+        self.clip_dict = clip_dict
 
         if isinstance(event_info, str):
             if ".ini" in event_info:
@@ -87,6 +91,10 @@ class JetReconstructionDataset(Dataset):
 
         self.mean = None
         self.std = None
+
+        print(f"Jet reconstruction init. dataset file:")
+        print(f" - {self.data_file}")
+        print(f" - rseed {randomization_seed}")
 
         with h5py.File(self.data_file, 'r') as file:
             # Get the first merged_momenta input to find the total number of events in the dataset.
@@ -125,7 +133,7 @@ class JetReconstructionDataset(Dataset):
 
             # Load source features from hdf5 file, processing them depending on their type.
             self.sources = OrderedDict((
-                (input_name, create_source_input(self.event_info, file, input_name, self.num_events, limit_index, pNN_reprocessing))
+                (input_name, create_source_input(self.event_info, file, input_name, self.num_events, limit_index, pNN_reprocessing, clip_dict))
                 for input_name in self.event_info.input_names
             ))
 
@@ -193,6 +201,7 @@ class JetReconstructionDataset(Dataset):
         -------
         np.ndarray or torch.Tensor
         """
+        print(f"COMPUTING LIMIT INDEX: {limit_index}")
         # In the float case, we just generate the list with the appropriate bounds
         if isinstance(limit_index, float):
             limit_index = (0.0, limit_index) if limit_index > 0 else (1.0 + limit_index, 1.0)
@@ -211,8 +220,19 @@ class JetReconstructionDataset(Dataset):
             limit_index = limit_index[lower_index:upper_index]
 
         # Convert to numpy array for simplicity
-        if isinstance(limit_index, Tensor):
-            limit_index = limit_index.numpy()
+        if isinstance(limit_index, (Tensor, np.ndarray)):
+            if isinstance(limit_index, Tensor):
+                limit_index = limit_index.numpy()
+            # wow turns out that shuffling wasn't even happening in the end
+            # if i'd given a mask...
+            if randomization_seed > 0:
+                print(f"APPLYING RANDOMIZATION TO A MASK:")
+                # should the random state only be applied for training
+                # or is val fine too? should be fine right?
+                random_state = np.random.RandomState(seed=randomization_seed)
+                limit_index = random_state.permutation(limit_index)
+                print(f" - RANDOMISED: {limit_index}")
+                return limit_index
 
         # Make sure the resulting index array is sorted for faster loading.
         return np.sort(limit_index)
@@ -239,6 +259,21 @@ class JetReconstructionDataset(Dataset):
             for index, daughter in enumerate(daughter_particles):
                 dataset = self.dataset(hdf5_file, [SpecialKey.Targets, event_particle], daughter)
                 dataset.read_direct(target_data[index].numpy())
+
+                if self.clip_dict is not None:
+                    # get source name
+                    source_idx = daughter_particles.sources[index]
+                    source_name = list(self.sources.keys())[source_idx]
+                    # if source name 
+                    if f"{source_name}:MASK" in self.clip_dict:
+                        # basically if we're clipping number of object
+                        # can't have any assignments ≥ the assignment
+                        # >= because indexing starts at 0 !
+                        print(f"LOADING {event_particle} -> {daughter}")
+                        print(f" - MASKING ASSIGNMENTS >= {self.clip_dict[f'{source_name}:MASK']['upper_bound']}")
+                        affected_mask = target_data[index] >= self.clip_dict[f"{source_name}:MASK"]["upper_bound"]
+                        affected_indices = np.flatnonzero(affected_mask)
+                        target_data[index][affected_indices] = -1
 
             # Offset the targets if they are not global targets
             for index, source in enumerate(daughter_particles.sources):

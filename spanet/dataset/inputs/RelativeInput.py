@@ -10,7 +10,8 @@ from spanet.dataset.inputs.BaseInput import BaseInput
 
 class RelativeInput(BaseInput):
     # noinspection PyAttributeOutsideInit
-    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, pNN_reprocessing: dict = None):
+    def load(self, hdf5_file: h5py.File, limit_index: np.ndarray, 
+        pNN_reprocessing: dict = None, clip_dict: dict = None):
         '''
         Not sure what this input type is, nor how to implement pNN_reprocessing for it...
         '''
