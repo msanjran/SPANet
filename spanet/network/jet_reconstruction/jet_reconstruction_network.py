@@ -149,11 +149,18 @@ class JetReconstructionNetwork(JetReconstructionBase):
                 for key, value in outputs.classifications.items()
             }
 
+            classification_scores = {
+                key: value.cpu().max(1).values.numpy()
+                for key, value in outputs.classifications.items()
+            }
+
         return Predictions(
             assignments,
             detections,
             regressions,
-            classifications
+            classifications,
+            classification_scores,
+            outputs
         )
 
     def predict_assignments(self, sources: Tuple[Source, ...]) -> np.ndarray:
@@ -168,7 +175,7 @@ class JetReconstructionNetwork(JetReconstructionBase):
         return extract_predictions(assignments)
 
     def predict_assignments_and_detections(self, sources: Tuple[Source, ...]) -> Tuple[TArray, TArray]:
-        assignments, detections, regressions, classifications = self.predict(sources)
+        assignments, detections, regressions, classifications, classification_scores = self.predict(sources)
 
         # Always predict the particle exists if we didn't train on it
         if self.options.detection_loss_scale == 0:

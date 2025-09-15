@@ -4,12 +4,15 @@ from collections import defaultdict
 
 import numpy as np
 import torch
+from torch import Tensor
+from torch.nn import functional as F
 
 from sklearn import metrics as sk_metrics
 
 from spanet.options import Options
 from spanet.dataset.evaluator import SymmetricEvaluator
 from spanet.network.jet_reconstruction.jet_reconstruction_network import JetReconstructionNetwork
+from spanet.network.utilities.divergence_losses import assignment_cross_entropy_loss, jensen_shannon_divergence
 
 
 class JetReconstructionValidation(JetReconstructionNetwork):
@@ -117,7 +120,7 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     def validation_step(self, batch, batch_idx) -> Dict[str, np.float32]:
         # Run the base prediction step
         sources, num_jets, targets, regression_targets, classification_targets, item = batch
-        jet_predictions, particle_scores, regressions, classifications = self.predict(sources)
+        jet_predictions, particle_scores, regressions, classifications, classification_scores, outputs = self.predict(sources)
 
         batch_size = num_jets.shape[0]
         num_targets = len(targets)
@@ -171,7 +174,29 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         for key in classifications:
             accuracy = (classifications[key] == classification_targets[key])
-            self.log(f"CLASSIFICATION/{key}_accuracy", accuracy.mean(), sync_dist=True)
+            self.log(f"CLASSIFICATION/{key}_accuracy_val", accuracy.mean(), sync_dist=True)
+
+            # Add loss for validation step
+            cweight = None if self.balance_classifications else self.classification_weights[key]
+            closs = self.calculate_classification_loss(
+                outputs.classifications[key],
+                classification_targets[key],
+                cweight
+            )
+            self.log(f"loss/classification/{key}_val", closs, sync_dist=True)
+            # todo: add other metrics?
+            
+            # classification_metrics = {
+            #     "sensitivity":sk_metrics.recall_score,
+            #     "specificity":lambda t, p: sk_metrics.recall_score(~t, ~p),
+            #     "f1_score":sk_metrics.f1_score
+            # }
+            # for cm in classification_metrics:
+            #     self.log(
+            #         f"CLASSIFICATION/{key}_{cm}_val",
+            #         classification_metrics[cm](classifications[key], classification_targets[key]),
+            #         sync_dist=True
+            #     )
 
         for name, value in metrics.items():
             if not np.isnan(value):
@@ -181,8 +206,30 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         return metrics
 
+    def calculate_classification_loss(
+        self, prediction, target, weight
+    ):
+        if isinstance(prediction, np.ndarray):
+            prediction = torch.from_numpy(prediction).float().to(self.device)
+        if isinstance(target, np.ndarray):
+            target = torch.from_numpy(target).long().to(self.device)
+        if isinstance(weight, np.ndarray):
+            weight = torch.from_numpy(weight).long().to(self.device)
+        return F.cross_entropy(
+            prediction, target, ignore_index=-1, weight=weight
+        )
+        
+
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
+
+
+    ##################
+    # Allow ourselves to calculate loss for validation so we can compare...
+    ##################
+
+
+
 
 #    def on_validation_epoch_end(self):
 #        # merge metrics from different mini batches into one dict

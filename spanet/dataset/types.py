@@ -174,6 +174,8 @@ class Predictions(NamedTuple):
     detections: NDArray[np.float32]
     regressions: Dict[str, NDArray[np.float32]]
     classifications: Dict[str, NDArray[np.int64]]
+    classification_probabilities: Dict[str, NDArray[np.float32]]
+    outputs: Outputs
 
 
 class Evaluation(NamedTuple):

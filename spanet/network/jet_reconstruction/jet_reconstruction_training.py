@@ -5,6 +5,8 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
+from sklearn import metrics as sk_metrics
+
 from spanet.options import Options
 from spanet.dataset.types import Batch, Source, AssignmentTargets
 from spanet.dataset.regressions import regression_loss
@@ -235,7 +237,30 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             classification_terms.append(self.options.classification_loss_scale * current_loss)
 
             with torch.no_grad():
-                self.log(f"loss/classification/{key}", current_loss, sync_dist=True)
+                self.log(f"loss/classification/{key}_train", current_loss, sync_dist=True)
+
+                # Calculate accuracy on training split
+                # should really take weight into account...
+                classification_accuracy = (current_prediction.argmax(1) == current_target).float().mean()
+                self.log(
+                    f"CLASSIFICATION/{key}_accuracy_train", 
+                    classification_accuracy,
+                    sync_dist=True)
+                # todo: add other metrics?
+
+                # classification_metrics = {
+                #     "sensitivity":sk_metrics.recall_score,
+                #     "specificity":lambda t, p: sk_metrics.recall_score(~t, ~p),
+                #     "f1_score":sk_metrics.f1_score
+                # }
+                # for cm in classification_metrics:
+                #     self.log(
+                #         f"CLASSIFICATION/{key}_{cm}_train",
+                #         classification_metrics[cm](current_prediction, current_target),
+                #         sync_dist=True
+                #     )
+
+                
             
             # print(f" - {key} shape: {current_loss.shape}")
             # print(f" - {key} value: {current_loss}")
