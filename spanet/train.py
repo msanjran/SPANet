@@ -34,6 +34,10 @@ def set_global_seed(level: str, seed: int) -> None:
 
     if level == "pl_everything":
         pl.seed_everything(seed)
+        # apparently these aren't set automatically
+        # by seed_everything
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     elif level == "manual_everything":
 
         random.seed(seed)
