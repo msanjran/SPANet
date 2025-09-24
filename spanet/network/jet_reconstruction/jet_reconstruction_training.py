@@ -32,6 +32,7 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             particle: self.training_dataset.event_info.product_particles[particle][0]
             for particle in self.event_particle_names
         }
+        self.aggregate_metrics = {} # store metrics like 'classif_i_acc_num' 
 
     def particle_symmetric_loss(self, assignment: Tensor, detection: Tensor, target: Tensor, mask: Tensor, weight: Tensor) -> Tensor:
         assignment_loss = assignment_cross_entropy_loss(assignment, target, mask, weight, self.options.focal_gamma)
@@ -246,6 +247,22 @@ class JetReconstructionTraining(JetReconstructionNetwork):
                     f"CLASSIFICATION/{key}_accuracy_train", 
                     classification_accuracy,
                     sync_dist=True)
+                
+                # enable calculation of uncertainties
+                # 1. simple binomial error --> assumes N.p ≥ 5 and N.(1-p) ≥ 5
+                correct = (current_prediction.argmax(1) == current_target).float()
+                acc_error = torch.sqrt(classification_accuracy * (1 - classification_accuracy) / correct.shape[0])
+                self.log(f"CLASSIFICATION/{key}_acc_error_train", acc_error.mean(), sync_dist=True)
+                # 2. store number of correct and total for epoch end calculation
+                #    this will allow us to calculate the uncertainty without assuming anything
+                accuracy_num, accuracy_den = correct.sum(), correct.shape[0]
+                if f"CLASSIFICATION/{key}_acc_num_train" not in self.aggregate_metrics:
+                    self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_num_train"] = accuracy_num
+                    self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_den_train"] = accuracy_den
+                else:
+                    self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_num_train"] += accuracy_num
+                    self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_den_train"] += accuracy_den
+                    
                 # todo: add other metrics?
 
                 # classification_metrics = {
@@ -383,3 +400,63 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         self.log("loss/total_loss", total_loss.sum(), sync_dist=True)
 
         return total_loss.mean()
+    
+    def log_gradients(self, norm_type=2):
+        '''
+        Log the gradient norms of the model parameters.
+        by default the norm_type is 2...
+        '''
+        total_norm = 0.0
+        # layer_norms = {}
+        for name, param in self.named_parameters():
+            if param.grad is not None:
+                # print(f"{name}: {param.grad}")
+                param_norm = param.grad.data.norm(norm_type)
+                # layer_norms[name] = param_norm.item()
+                total_norm += param_norm.item() ** norm_type
+        total_norm = total_norm ** (1. / norm_type)
+        self.log("gradients/total_norm", total_norm, sync_dist=True)
+        # too many bloody parameters --> too expensive to keep
+        # for name, norm in layer_norms.items():
+        #     self.log(f"gradients/{name}_norm", norm, sync_dist=True)
+
+    def on_after_backward(self) -> None:
+        '''
+        PyTorch Lightning hook to be called after loss.backward() and before optimizer.step()
+        - want to log the grad norm here
+        '''
+        self.log_gradients()
+        return None
+
+    def on_train_epoch_end(self):
+        ''' 
+            Called at end of epoch --> we want to aggregate some metrics here for
+            more robust calculations
+        '''
+        # Allow us to calculate aggregate metrics afterwards
+        for key in self.aggregate_metrics:
+            value = self.aggregate_metrics[key]
+
+            if isinstance(value, torch.Tensor):
+                value = value.detach().cpu().numpy()
+            # Ensure it's a scalar (Python float/int)
+            if isinstance(value, np.ndarray):
+                value = value.item()  # <- convert 0-dim array to scalar
+
+            self.aggregate_metrics[key] = value  # overwrite with numpy value
+            # might bloat the logging metrics a bit...
+            self.log(key, self.aggregate_metrics[key], sync_dist=True, on_epoch=True)
+            if "acc_num" in key:
+                acc_num = value
+                acc_den = self.aggregate_metrics[key.replace("acc_num", "acc_den")]
+                if isinstance(acc_den, torch.Tensor):
+                    acc_den = acc_den.detach().cpu().numpy()
+                if isinstance(acc_den, np.ndarray):
+                    acc_den = acc_den.item()
+                acc = acc_num / acc_den
+                self.log(key.replace("acc_num", "acc_acc"), acc, sync_dist=True, on_epoch=True)
+
+                err = np.sqrt(acc * (1 - acc) / acc_den)
+                self.log(key.replace("acc_num", "acc_err"), err, sync_dist=True, on_epoch=True)
+        # reset the counter per epoch
+        self.aggregate_metrics.clear()

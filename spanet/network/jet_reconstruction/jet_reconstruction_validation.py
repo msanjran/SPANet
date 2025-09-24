@@ -1,6 +1,8 @@
 from typing import Dict, Callable
 import warnings
 from collections import defaultdict
+import os
+import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
@@ -23,6 +25,11 @@ class JetReconstructionValidation(JetReconstructionNetwork):
             self.particle_index_tensor_np = self.particle_index_tensor.cpu().detach().numpy()
             self.particle_weights_tensor_np = self.particle_weights_tensor.cpu().detach().numpy()
         # self.validation_step_metrics_outputs = []
+        self.aggregate_metrics = {} # store metrics like 'classif_i_acc_num' 
+        # self.aggregate_probabs = {} # store probabilities per classif. (DEBUG ONLY)
+        # self.debug_dir = f"{self.logger.log_dir}/debug_validation"
+        # self.debug_dir = "debug_validation"
+        # os.makedirs(self.debug_dir, exist_ok=True)
 
     @property
     def particle_metrics(self) -> Dict[str, Callable[[np.ndarray, np.ndarray], float]]:
@@ -172,9 +179,35 @@ class JetReconstructionValidation(JetReconstructionNetwork):
             absolute_deviation = delta
             self.logger.experiment.add_histogram(f"REGRESSION/{key}_absolute_deviation", absolute_deviation, self.global_step)
 
+        # print(f"Validation batch {batch_idx} class. accs:")
         for key in classifications:
             accuracy = (classifications[key] == classification_targets[key])
             self.log(f"CLASSIFICATION/{key}_accuracy_val", accuracy.mean(), sync_dist=True)
+            # print(f" - {key}:")
+            # print(f" - - acc: {accuracy.mean():.4f}")
+
+            # print(f" - - proportions (target):")
+            # unique, counts = np.unique(classification_targets[key], return_counts=True)
+            # proportions = dict(zip(unique, counts / counts.sum()))
+            # for u in proportions:
+            #     print(f"   - {u}: {proportions[u]:.4f}")
+            
+            # print(f" - - proportions (prediction):")
+            # unique, counts = np.unique(classifications[key], return_counts=True)
+            # proportions = dict(zip(unique, counts / counts.sum()))
+            # for u in proportions:
+            #     print(f"   - {u}: {proportions[u]:.4f}")
+
+            # enable calculation of uncertainties
+            # 1. simple binomial error --> assumes N.p ≥ 5 and N.(1-p) ≥ 5
+            acc_error = np.sqrt(accuracy.mean() * (1 - accuracy.mean()) / accuracy.shape[0])
+            self.log(f"CLASSIFICATION/{key}_acc_error_val", acc_error, sync_dist=True)
+            # print(f" - - err: {acc_error:.4f}")
+            # 2. store number of correct and total for epoch end calculation
+            #    this will allow us to calculate the uncertainty without assuming anything
+            accuracy_num, accuracy_den = accuracy.sum(), accuracy.shape[0]
+            # print(f" - - correct: {accuracy_num}")
+            # print(f" - - total: {accuracy_den}")
 
             # Add loss for validation step
             cweight = None if self.balance_classifications else self.classification_weights[key]
@@ -183,7 +216,26 @@ class JetReconstructionValidation(JetReconstructionNetwork):
                 classification_targets[key],
                 cweight
             )
+            # record probabilities every epoch end
+            # if f"classification_{key}_probs" not in self.aggregate_probabs:
+            #     probs = torch.softmax(outputs.classifications[key], dim=1)
+            #     self.aggregate_probabs[f"classification_{key}_probs"] = [probs.detach().cpu()]
+            #     self.aggregate_probabs[f"classification_{key}_targs"] = [torch.from_numpy(classification_targets[key])]
+            # else:
+            #     probs = torch.softmax(outputs.classifications[key], dim=1)
+            #     self.aggregate_probabs[f"classification_{key}_probs"] += [probs.detach().cpu()]
+            #     self.aggregate_probabs[f"classification_{key}_targs"] += [torch.from_numpy(classification_targets[key])]
+
+            # print(f" - - loss: {closs}")
             self.log(f"loss/classification/{key}_val", closs, sync_dist=True)
+            if f"CLASSIFICATION/{key}_acc_num_val" not in self.aggregate_metrics:
+                self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_num_val"] = accuracy_num
+                self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_den_val"] = accuracy_den
+                # self.aggregate_metrics[f"lossagg/classification/{key}_val"] = closs
+            else:
+                self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_num_val"] += accuracy_num
+                self.aggregate_metrics[f"CLASSIFICATION/{key}_acc_den_val"] += accuracy_den
+                # self.aggregate_metrics[f"lossagg/classification/{key}_val"] +=  closs
             # todo: add other metrics?
             
             # classification_metrics = {
@@ -206,6 +258,29 @@ class JetReconstructionValidation(JetReconstructionNetwork):
 
         return metrics
 
+    def plot_probability(self):
+        ''' ignoring weights... '''
+        for key in self.aggregate_probabs:
+            if "targs" in key: continue
+
+            all_probs = torch.cat(self.aggregate_probabs[key], dim=0)
+            all_targs = torch.cat(self.aggregate_probabs[key.replace("probs", "targs")], dim=0)
+            # what do we want to plot?
+            # for each target --> the associated probability
+            
+            plt.figure(figsize=(10,10))
+            use_bins = np.arange(0,1+0.01,0.01)
+            chosen_probs = all_probs[torch.arange(all_probs.shape[0]), all_targs]
+            unique = np.unique(all_targs)
+            for u in unique:
+                plt.hist(chosen_probs[all_targs == u], 
+                    bins=use_bins, label=f"{u}", histtype="step")
+            plt.xlabel("Prob. of target")
+            plt.savefig(os.path.join(self.debug_dir, f"probs_epoch_{self.current_epoch}.pdf"))
+            plt.close()
+        
+        # self.aggregate_probabs.clear()
+
     def calculate_classification_loss(
         self, prediction, target, weight
     ):
@@ -223,6 +298,42 @@ class JetReconstructionValidation(JetReconstructionNetwork):
     def test_step(self, batch, batch_idx):
         return self.validation_step(batch, batch_idx)
 
+    def on_validation_epoch_end(self):
+        ''' 
+            Called at end of epoch --> we want to aggregate some metrics here for
+            more robust calculations
+        '''
+        # Allow us to calculate aggregate metrics afterwards
+        # print(f"Validation epoch end, aggregate metrics:")
+        for key in self.aggregate_metrics:
+            value = self.aggregate_metrics[key]
+            # print(f" - {key}: {value}")
+            if isinstance(value, torch.Tensor):
+                value = value.detach().cpu().numpy()
+            # Ensure it's a scalar (Python float/int)
+            if isinstance(value, np.ndarray):
+                value = value.item()  # <- convert 0-dim array to scalar
+            self.aggregate_metrics[key] = value  # overwrite with numpy value
+
+            # might bloat the logging metrics a bit...
+            self.log(key, self.aggregate_metrics[key], sync_dist=True, on_epoch=True)
+            if "acc_num" in key:
+                acc_num = value
+                acc_den = self.aggregate_metrics[key.replace("acc_num", "acc_den")]
+        
+                if isinstance(acc_den, torch.Tensor):
+                    acc_den = acc_den.detach().cpu().numpy()
+                if isinstance(acc_den, np.ndarray):
+                    acc_den = acc_den.item()
+                acc = acc_num / acc_den
+                self.log(key.replace("acc_num", "acc_acc"), acc, sync_dist=True, on_epoch=True)
+
+                err = np.sqrt(acc * (1 - acc) / acc_den)
+                self.log(key.replace("acc_num", "acc_err"), err, sync_dist=True, on_epoch=True)
+        # reset the counter per epoch
+        self.aggregate_metrics.clear()
+        # self.plot_probability()
+        # self.aggregate_probabs.clear()
 
     ##################
     # Allow ourselves to calculate loss for validation so we can compare...
