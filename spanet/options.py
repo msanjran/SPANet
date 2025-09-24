@@ -200,6 +200,10 @@ class Options(Namespace):
         self.clip_val: str = None
         self.clip_test: str = None
 
+        # Settings for validation dataloader
+        self.val_dataloader_shuffle: bool = False
+        self.val_dataloader_drop_last: bool = True
+
         # =========================================================================================
         # Training Options
         # =========================================================================================

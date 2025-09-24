@@ -21,6 +21,10 @@ class JetReconstructionBase(pl.LightningModule):
         self.options = options
 
         self.training_dataset, self.validation_dataset, self.testing_dataset = self.create_datasets()
+        # debugging
+        print(f"val dataloader options:")
+        print(f" - drop_last: {self.options.val_dataloader_drop_last}")
+        print(f" - drop_shuffle: {self.options.val_dataloader_shuffle}")
 
         # Compute class weights for particles from the training dataset target distribution
         self.balance_particles = False
@@ -258,7 +262,8 @@ class JetReconstructionBase(pl.LightningModule):
         return self.dataloader(self.training_dataset, shuffle=True, drop_last=True, **self.dataloader_options)
 
     def val_dataloader(self) -> DataLoader:
-        return self.dataloader(self.validation_dataset, drop_last=True, **self.dataloader_options)
+        # options.val_dataloader are for debugging --> please remove after...
+        return self.dataloader(self.validation_dataset, shuffle=self.options.val_dataloader_shuffle, drop_last=self.options.val_dataloader_drop_last, **self.dataloader_options)
 
     def test_dataloader(self) -> DataLoader:
         if self.testing_dataset is None:
