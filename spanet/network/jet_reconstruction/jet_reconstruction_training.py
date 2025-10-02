@@ -393,11 +393,15 @@ class JetReconstructionTraining(JetReconstructionNetwork):
         # Combine and return the loss
         # ---------------------------------------------------------------------------------------------------
         total_loss = torch.cat([loss.view(-1) for loss in total_loss])
+        # with torch.no_grad():
+        #     print(f" - batch {batch_nb}: total loss: {total_loss}")
 
         # print(f" - shape (after combining): {total_loss.shape}")
         # print(f" - values (after combining): {total_loss}")
 
         self.log("loss/total_loss", total_loss.sum(), sync_dist=True)
+
+        # print(f"")
 
         return total_loss.mean()
     

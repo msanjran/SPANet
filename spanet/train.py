@@ -94,7 +94,11 @@ def main(
         rand_control: Optional[str],
         rand_control_seed: Optional[int],
         clip_train: Optional[str],
-        clip_val: Optional[str]
+        clip_val: Optional[str],
+        val_shuffle: bool,
+        val_include_last: bool,
+        save_top_X: int,
+        notebook_mode: int
     ):
 
     # args_dict = locals()
@@ -186,6 +190,15 @@ def main(
         options.global_seed_method = rand_control
         options.global_seed_number = rand_control_seed
     
+    # val dataloader options (mainly for debugging)
+    if val_shuffle:
+        if master:
+            print(f"Overriding 'val_dataloader_shuffle' {options.val_dataloader_shuffle} to {val_shuffle}")
+        options.val_dataloader_shuffle = val_shuffle
+    if val_include_last:
+        if master:
+            print(f"Overriding 'val_dataloader_drop_last' {options.val_dataloader_drop_last} to {not val_include_last}")
+        options.val_dataloader_drop_last = not val_include_last
 
     if random_seed > 0:
         options.dataset_randomization = random_seed
@@ -248,14 +261,14 @@ def main(
             verbose=options.verbose_output,
             filename='{epoch}-{step}-{validation_average_jet_accuracy:.3f}',
             monitor='validation_average_jet_accuracy',
-            save_top_k=-1,
+            save_top_k=save_top_X,
             mode='max',
             save_last=True
         ),
         LearningRateMonitor(),
         DeviceStatsMonitor(),
-        RichProgressBar() if _RICH_AVAILABLE else TQDMProgressBar(),
-        RichModelSummary(max_depth=1) if _RICH_AVAILABLE else ModelSummary(max_depth=1)
+        RichProgressBar() if (_RICH_AVAILABLE==True and notebook_mode==False) else TQDMProgressBar(),
+        RichModelSummary(max_depth=1) if (_RICH_AVAILABLE==True and notebook_mode==False) else ModelSummary(max_depth=1)
     ]
 
     epochs = options.epochs
@@ -384,5 +397,17 @@ if __name__ == '__main__':
     
     parser.add_argument("--clip_val", default=None,
                         help="Path to file describing inputs to clip for validation dataset")
+
+    parser.add_argument("--val_shuffle", default=False, action='store_true',
+                        help="Flag to shuffle the validation dataset each epoch during val step")
+    
+    parser.add_argument("--val_include_last", default=False, action='store_true',
+                        help="Flag to include last batch of validation split each epoch during val step")
+
+    parser.add_argument("--save_top_X", default=-1, type=int,
+                        help="How many checkpoints to save, default=-1 (all)")
+
+    parser.add_argument("--notebook_mode", default=False, action='store_true',
+                        help="Basically RICH doesn't give us progress bars in notebooks..")
 
     main(**parser.parse_args().__dict__)

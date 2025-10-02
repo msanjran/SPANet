@@ -126,6 +126,15 @@ class LayerNorm(nn.Module):
     def forward(self, x: Tensor, sequence_mask: Tensor) -> Tensor:
         return self.normalization(x)
 
+# added identity that accepts taking 'mask' into its forward()
+# argument so we don't need to change anything up --> and just returns the identity
+# class MaskedIdentity(nn.Module):
+#     def __init__(self):
+#         self.normalization, 
+class MaskedIdentity(nn.Identity):
+    def forward(self, x: Tensor, sequence_mask: Tensor) -> Tensor:
+        return x
+
 
 # noinspection SpellCheckingInspection
 def create_normalization(normalization: str, output_dim: int) -> nn.Module:
@@ -138,4 +147,6 @@ def create_normalization(normalization: str, output_dim: int) -> nn.Module:
     elif normalization == "layernorm":
         return LayerNorm(output_dim)
     else:
-        return nn.Identity()
+        print(f"Normalization: given {normalization}, returning Identity")
+        return MaskedIdentity()
+        # return nn.Identity()
