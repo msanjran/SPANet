@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from torch import Tensor
 from torch.nn import functional as F
+import os
 
 from sklearn import metrics as sk_metrics
 
@@ -283,6 +284,11 @@ class JetReconstructionTraining(JetReconstructionNetwork):
             # print(f" - {key} value: {current_loss}")
 
         return total_loss + classification_terms
+    
+    # def on_train_start(self):
+    #     ''' allows us to save output in the right place ... '''
+    #     self.debug_dir_train = os.path.join(self.trainer.logger.log_dir, "debug_train")
+    #     os.makedirs(self.debug_dir_train, exist_ok=True)
 
     def training_step(self, batch: Batch, batch_nb: int) -> Dict[str, Tensor]:
         # ===================================================================================================
