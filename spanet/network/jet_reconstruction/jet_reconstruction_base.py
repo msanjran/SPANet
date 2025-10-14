@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from torch import nn
 import json
+import sys
 
 # noinspection PyProtectedMember
 from torch.utils.data import DataLoader
@@ -106,6 +107,7 @@ class JetReconstructionBase(pl.LightningModule):
         validation_range = 1.0
 
         # If we dont have a validation file provided, create one from the training file.
+        save_splitting_indices = False
         if not validation_file:
             validation_file = training_file
 
@@ -113,6 +115,23 @@ class JetReconstructionBase(pl.LightningModule):
             train_validation_split = self.options.dataset_limit * self.options.train_validation_split
             training_range = (0.0, train_validation_split)
             validation_range = (train_validation_split, self.options.dataset_limit)
+
+            print(f"No validation file given... --> splitting off from training")
+            print(f" - training range: {training_range}")
+            print(f" - validation range: {validation_range}")
+
+            # shuffle -> split as opposed to split -> shuffle
+            # nevermind --> it does do the splitting after the shuffling
+            # the indices are used on the shuffled dataset
+            # if self.options.pre_split_shuffling:
+
+            # what if we want to apply this limit indexing after having a custom mask?
+            if self.options.train_custom_mask is not None:
+                self.options.val_custom_mask = self.options.train_custom_mask
+            
+            # if using this train_validation splitting --> ought to save indices for bookkeeping
+            # this should be saved in '/path/to/logdir/name/version_x'
+            save_splitting_indices = True
 
         # Construct primary training datasets
         # Note that only the training dataset should be limited to full events or partial events.
@@ -132,7 +151,10 @@ class JetReconstructionBase(pl.LightningModule):
             partial_events=self.options.partial_events,
             randomization_seed=self.options.dataset_randomization,
             custom_mask=use_train_custom_mask,
-            clip_dict=use_clip_train
+            clip_dict=use_clip_train,
+            save_indices=save_splitting_indices,
+            limit_index_sorting=self.options.limit_index_sorting,
+            shuffle_by_sample=self.options.shuffle_by_sample
         )
 
         if self.options.val_custom_mask is None:
@@ -150,10 +172,15 @@ class JetReconstructionBase(pl.LightningModule):
             event_info=event_info_file,
             limit_index=validation_range,
             vector_limit=self.options.limit_to_num_jets,
-            # randomization_seed=self.options.dataset_randomization,
+            randomization_seed=self.options.dataset_randomization,
             custom_mask=use_val_custom_mask,
-            clip_dict=use_clip_val
+            clip_dict=use_clip_val,
+            save_indices=save_splitting_indices,
+            limit_index_sorting=self.options.limit_index_sorting,
+            shuffle_by_sample=self.options.shuffle_by_sample
         )
+
+        # sys.exit()
 
         # Optionally construct the testing dataset.
         # This is not used in the main training script but is still useful for testing later.

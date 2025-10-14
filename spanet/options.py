@@ -204,6 +204,12 @@ class Options(Namespace):
         self.val_dataloader_shuffle: bool = False
         self.val_dataloader_drop_last: bool = True
 
+        # Settings for loading datasets in 
+        self.limit_index_sorting: bool = True # yes/no to sorting the indices
+        # why not sort? possible that you might start training 'zp500w4->tt->...' 
+        # if not shuffled dataset beforehand
+        self.shuffle_by_sample: bool = False # if multiple samples -> do shuffling/splitting beforehand
+
         # =========================================================================================
         # Training Options
         # =========================================================================================

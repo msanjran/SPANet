@@ -98,7 +98,9 @@ def main(
         val_shuffle: bool,
         val_include_last: bool,
         save_top_X: int,
-        notebook_mode: int
+        notebook_mode: int,
+        dont_limit_index_sort: bool,
+        shuffle_by_sample: bool
     ):
 
     # args_dict = locals()
@@ -202,6 +204,16 @@ def main(
 
     if random_seed > 0:
         options.dataset_randomization = random_seed
+    
+    # settings on loading in datasets
+    if dont_limit_index_sort:
+        if master:
+            print(f"Overriding 'limit_index_sorting' {options.limit_index_sorting} to {not dont_limit_index_sort}")
+        options.limit_index_sorting = not dont_limit_index_sort
+    if shuffle_by_sample:
+        if master:
+            print(f"Overriding 'shuffle_by_sample' {options.shuffle_by_sample} to {shuffle_by_sample}")
+        options.shuffle_by_sample = shuffle_by_sample
 
     # -------------------------------------------------------------------------------------------------------
     # Print the full hyperparameter list
@@ -307,6 +319,15 @@ def main(
         #     json.dump(args_dict, json_file, indent=4)
 
         # copy the arguments into an 'args' file so easier to track...
+
+        # save indices if we're getting val split from train split
+        # for bookkeeping
+        saved_train = model.training_dataset.save_indices_to_file(
+            os.path.join(trainer.logger.log_dir, f"train_split_idx.npy"))
+        saved_val = model.validation_dataset.save_indices_to_file(
+            os.path.join(trainer.logger.log_dir, f"val_split_idx.npy"))
+        if saved_train and saved_val:
+            print(f"Saved train/val split indices")
         
 
     trainer.fit(model, ckpt_path=checkpoint)
@@ -409,5 +430,11 @@ if __name__ == '__main__':
 
     parser.add_argument("--notebook_mode", default=False, action='store_true',
                         help="Basically RICH doesn't give us progress bars in notebooks..")
+        
+    parser.add_argument("--dont_limit_index_sort", default=False, action='store_true',
+                        help="If flagged -> will not sort the limit indices (not recommended for large files)")
+    
+    parser.add_argument("--shuffle_by_sample", default=False, action='store_true',
+                        help="If flagged -> will sort indices of dataset per-sample (equal n. A,B,C -> equal n. A,B,C)")
 
     main(**parser.parse_args().__dict__)

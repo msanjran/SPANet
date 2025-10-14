@@ -45,7 +45,10 @@ class JetReconstructionDataset(Dataset):
         partial_events: bool = True,
         pNN_reprocessing: dict = None,
         custom_mask: np.ndarray = None,
-        clip_dict: dict = None
+        clip_dict: dict = None,
+        save_indices: bool = False,
+        limit_index_sorting = True,
+        shuffle_by_sample = False
     ):
         """ A container class for reading in jet reconstruction datasets.
 
@@ -76,12 +79,21 @@ class JetReconstructionDataset(Dataset):
              - int (use case is for shuffling, len <= len n_events ) (not implemented yet)
         clip_dict : dict
             A dictionary containing information about which inputs to clip
+        save_indices : bool
+            Boolean indicating whether we ought to save the array from 'limit_index' or not...
+        limit_index_sorting : bool
+            Boolean indicating whether we ought to do 'np.sort(limit_index)' at end of function
+            --> not advisable for large files
+        shuffle_by_sample : bool
+            Boolean indicating whether we ought to shuffle and split train/val by sample or not (default=False)
+            Harcoded -> ought to really be used for debugging mainly...
         """
         super(JetReconstructionDataset, self).__init__()
 
         self.data_file = data_file
         self.event_info: EventInfo = event_info
         self.clip_dict = clip_dict
+        self.saved_indices = None
 
         if isinstance(event_info, str):
             if ".ini" in event_info:
@@ -95,6 +107,7 @@ class JetReconstructionDataset(Dataset):
         print(f"Jet reconstruction init. dataset file:")
         print(f" - {self.data_file}")
         print(f" - rseed {randomization_seed}")
+        print(f" - limit index: {limit_index}")
 
         with h5py.File(self.data_file, 'r') as file:
             # Get the first merged_momenta input to find the total number of events in the dataset.
@@ -115,11 +128,18 @@ class JetReconstructionDataset(Dataset):
             #          self.num_events = custom_mask.shape[0]
 
             # Adjust limit index into a standard format.
-            if custom_mask is None:
-                limit_index = self.compute_limit_index(limit_index, randomization_seed)
+            if shuffle_by_sample:
+                limit_index = self.compute_limit_index_by_sample(file, limit_index, randomization_seed, custom_mask=custom_mask, limit_index_sorting=limit_index_sorting)
+            elif custom_mask is None:
+                limit_index = self.compute_limit_index(limit_index, randomization_seed, limit_index_sorting=limit_index_sorting)
             else:
                 print(f"Applying custom mask as limit index")
-                limit_index = self.compute_limit_index(np.where(custom_mask)[0], randomization_seed)
+                limit_index = self.compute_limit_index(np.where(custom_mask)[0], randomization_seed, 
+                    limit_index_og=limit_index, limit_index_sorting=limit_index_sorting)
+            
+            if save_indices:
+                self.saved_indices = limit_index
+            print(f" - Saved indices: {self.saved_indices}")
 
             # Check if pNN reprocessing paramters are valid
             if pNN_reprocessing is not None:
@@ -167,9 +187,9 @@ class JetReconstructionDataset(Dataset):
         if vector_limit > 0:
             self.limit_dataset_to_jet_count(vector_limit)
         
-        # Apply custom mask if given
-        if custom_mask is not None:
-            print(f"Apply custom event mask")
+        # Apply custom mask if given (this is already done via compute_limit_index)
+        # if custom_mask is not None:
+        #     print(f"Apply custom event mask")
             # copy otherwise it remains in 'mmap' mode...
             # self.limit_dataset_to_mask(custom_mask.copy())
 
@@ -182,8 +202,65 @@ class JetReconstructionDataset(Dataset):
         else:
             raise KeyError(f"{key} not found in group {group_string}")
 
+    def compute_limit_index_by_sample(self, file: h5py.File, limit_index: TLimitIndex, randomization_seed: int, 
+        custom_mask: np.ndarray = None,
+        limit_index_sorting: bool = True):
+        '''
+            Function to wrap around 'compute_limit_index' by selecting the indices by sample
+            -- Such that, if we have samples A, B, C; each of nevents (1000,1000,1000), that the combined
+            dataset's splitting does not create unequal numbers of A,B,C
+            -- I.e., shuffling&masking per sample
+            -- Will only create equal numbers if A,B,C (post-custom-mask) have equal numbers
+            -- Puts no real requirement on the numbers of events of each sample
 
-    def compute_limit_index(self, limit_index: TLimitIndex, randomization_seed: int) -> NDArray[np.int64]:
+            Note: very specific use-case; mainly for debugging...
+        '''
+        print(f"Constructing limit index by sample")
+
+        # 1. get sample array -> 2. loop and shuffle by sample -> 3. collate total indices
+        use_array = self.dataset(file, ["WEIGHTS/EVENT"], "sample") # hardcoded...
+        by_sample = np.unique(use_array)
+
+        # collect 
+        total_limit_index = []
+        for sample_id in by_sample:
+            print(f" - sample {sample_id}")
+            print(f" - - limit index: {limit_index}")
+
+            use_mask = use_array == sample_id
+            print(f" - - n possible events (sample): {np.sum(use_mask)}")
+            if custom_mask is not None:
+                use_mask = use_mask & custom_mask
+            if not (np.sum(use_mask) > 0):
+                print(f"Warning: shuffling by sample but sample:{sample_id} has no events")
+                continue
+            print(f" - - n possible events (sample & mask): {np.sum(use_mask)}")
+            limit_index_by_sample = self.compute_limit_index(np.where(use_mask)[0], randomization_seed, 
+                    limit_index_og=limit_index)
+            print(f" - - - limit indices: {limit_index_by_sample.shape[0]}")
+            total_limit_index.append(limit_index_by_sample)
+
+        total_limit_index = np.concatenate(total_limit_index)
+
+        if randomization_seed > 0:
+            random_state = np.random.RandomState(seed=randomization_seed)
+            ret = random_state.permutation(total_limit_index)
+        else:
+            print(f"Warning, limit indices by sample")
+            print(f" --> meaning each batch might not be representative (if also no sort)")
+            # limit_index = limit_index[lower_index:upper_index]
+            # don't need to do this since this is done per sample
+            ret = total_limit_index
+        if limit_index_sorting:
+            return np.sort(ret)
+        else:
+            return ret
+      
+
+
+    def compute_limit_index(self, limit_index: TLimitIndex, randomization_seed: int,
+        limit_index_og: Optional[TLimitIndex] = None,
+        limit_index_sorting: bool = True) -> NDArray[np.int64]:
         """ Take subsection of the data for training / validation
 
         Parameters
@@ -196,6 +273,9 @@ class JetReconstructionDataset(Dataset):
         randomization_seed: int
             If randomization_seed is non-zero, then we will first shuffle the indices in a deterministic manner
             before taking the subset defined by `limit_index`.
+        limit_index_og : float in [-1, 1], tuple of floats
+            Same as limit_index --> but ONLY TO BE USED when custom_mask has been applied
+            such that we apply the same sort of 'limiting' of the dataset to some percent
 
         Returns
         -------
@@ -205,6 +285,7 @@ class JetReconstructionDataset(Dataset):
         # In the float case, we just generate the list with the appropriate bounds
         if isinstance(limit_index, float):
             limit_index = (0.0, limit_index) if limit_index > 0 else (1.0 + limit_index, 1.0)
+            print(f" - converting to float --> {limit_index} ")
 
         # In the list / tuple case, we want a contiguous range
         if isinstance(limit_index, (list, tuple)):
@@ -217,10 +298,11 @@ class JetReconstructionDataset(Dataset):
             else:
                 limit_index = np.arange(self.num_events)
 
+            print(f" - converting to array {limit_index} between {(lower_index, upper_index)}")
             limit_index = limit_index[lower_index:upper_index]
 
         # Convert to numpy array for simplicity
-        if isinstance(limit_index, (Tensor, np.ndarray)):
+        elif isinstance(limit_index, (Tensor, np.ndarray)):
             if isinstance(limit_index, Tensor):
                 limit_index = limit_index.numpy()
             # wow turns out that shuffling wasn't even happening in the end
@@ -232,10 +314,26 @@ class JetReconstructionDataset(Dataset):
                 random_state = np.random.RandomState(seed=randomization_seed)
                 limit_index = random_state.permutation(limit_index)
                 print(f" - RANDOMISED: {limit_index}")
-                return limit_index
-
-        # Make sure the resulting index array is sorted for faster loading.
-        return np.sort(limit_index)
+                # return limit_index
+            if limit_index_og is not None:
+                print(f"APPLYING LIMIT_INDEXING ({limit_index_og}) TO MASKED DATASET")
+                if isinstance(limit_index_og, float):
+                    print(f" - float case")
+                    limit_index_og = (0.0, limit_index_og) if limit_index_og > 0 else (1.0 + limit_index_og, 1.0)
+                # if isinstance(limit_index, (list, tuple)): 
+                # ... (was i using the WRONG FUCKING ONE? yes, but, it didn't matter -> because i hadn't applied a mask...
+                if isinstance(limit_index_og, (list, tuple)):
+                    print(f" - tuple case")
+                    lower_index = int(round(limit_index_og[0] * limit_index.shape[0]))
+                    upper_index = int(round(limit_index_og[1] * limit_index.shape[0]))
+                    limit_index = limit_index[lower_index:upper_index]
+                # print(limit_index.shape[0])
+        
+        if limit_index_sorting:
+            # Make sure the resulting index array is sorted for faster loading.
+            return np.sort(limit_index)
+        else:
+            return limit_index
 
     def load_assignments(self, hdf5_file: h5py.File, limit_index: np.ndarray) -> Dict[str, Tuple[Tensor, Tensor, Tensor]]:
         """ Load target indices for every defined target
@@ -537,6 +635,9 @@ class JetReconstructionDataset(Dataset):
         self.num_events = event_mask.sum().item()
         self.num_vectors = sum(source.num_vectors() for source in self.sources.values())
 
+        if self.saved_indices is not None:
+            self.saved_indices = self.saved_indices[event_mask]
+
     def limit_dataset_to_partial_events(self):
         vector_masks = torch.stack([target[1] for target in self.assignments.values()])
         non_empty_events = vector_masks.any(0)
@@ -549,6 +650,17 @@ class JetReconstructionDataset(Dataset):
 
     def limit_dataset_to_jet_count(self, jet_count):
         self.limit_dataset_to_mask(self.num_vectors == jet_count)
+    
+    def save_indices_to_file(self, outfile):
+        '''
+            if dataset has indices saved (if we applied our own train/val splitting)
+            --> save it
+        '''
+        if self.saved_indices is None:
+            print(f"No indices recorded, nothing to save")
+            return False
+        np.save(outfile, self.saved_indices)
+        return True
 
     def __len__(self) -> int:
         return self.num_events
