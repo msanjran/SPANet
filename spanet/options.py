@@ -210,6 +210,9 @@ class Options(Namespace):
         # if not shuffled dataset beforehand
         self.shuffle_by_sample: bool = False # if multiple samples -> do shuffling/splitting beforehand
 
+        # balancing info --> if we want to select particular groups and have them have same numbers of events 
+        self.global_balancing: str = None
+
         # =========================================================================================
         # Training Options
         # =========================================================================================

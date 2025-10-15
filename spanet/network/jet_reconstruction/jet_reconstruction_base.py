@@ -97,6 +97,16 @@ class JetReconstructionBase(pl.LightningModule):
         with open(fpath, "r") as file:
             config = json.load(file)
         return config
+    
+    def open_balancer(self, fpath, split):
+        with open(fpath, "r") as file:
+            config = json.load(file)
+
+        if split == "train" and "force_n_train" in config:
+            config["force_n"] = config["force_n_train"]
+        elif split == "val" and "force_n_val" in config:
+            config["force_n"] = config["force_n_val"]
+        return config
 
     def create_datasets(self):
         event_info_file = self.options.event_info_file
@@ -139,10 +149,17 @@ class JetReconstructionBase(pl.LightningModule):
             use_train_custom_mask = None
         else:
             use_train_custom_mask = np.load(self.options.train_custom_mask, mmap_mode='r')
+
         if self.options.clip_train is None:
             use_clip_train = None
         else:
             use_clip_train = self.open_clip(self.options.clip_train)
+
+        if self.options.global_balancing is None:
+            use_global_balancing_train = None
+        else:
+            use_global_balancing_train = self.open_balancer(self.options.global_balancing, "train")
+
         training_dataset = self.dataset(
             data_file=training_file,
             event_info=event_info_file,
@@ -154,7 +171,8 @@ class JetReconstructionBase(pl.LightningModule):
             clip_dict=use_clip_train,
             save_indices=save_splitting_indices,
             limit_index_sorting=self.options.limit_index_sorting,
-            shuffle_by_sample=self.options.shuffle_by_sample
+            shuffle_by_sample=self.options.shuffle_by_sample,
+            global_balancing=use_global_balancing_train
         )
 
         if self.options.val_custom_mask is None:
@@ -165,6 +183,10 @@ class JetReconstructionBase(pl.LightningModule):
             use_clip_val = None
         else:
             use_clip_val = self.open_clip(self.options.clip_val)
+        if self.options.global_balancing is None:
+            use_global_balancing_val = None
+        else:
+            use_global_balancing_val = self.open_balancer(self.options.global_balancing, "val")
         # don't use dataset randomization to validation
         # so that our accuracies are more comparable
         validation_dataset = self.dataset(
@@ -177,7 +199,8 @@ class JetReconstructionBase(pl.LightningModule):
             clip_dict=use_clip_val,
             save_indices=save_splitting_indices,
             limit_index_sorting=self.options.limit_index_sorting,
-            shuffle_by_sample=self.options.shuffle_by_sample
+            shuffle_by_sample=self.options.shuffle_by_sample,
+            global_balancing=use_global_balancing_val
         )
 
         # sys.exit()

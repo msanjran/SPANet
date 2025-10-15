@@ -1,6 +1,9 @@
 import functools
 from typing import Union, Tuple, List, Optional, Dict
 from collections import OrderedDict
+import itertools
+import copy
+import json
 
 import h5py
 import numpy as np
@@ -33,6 +36,40 @@ TBatch = Tuple[
     Dict[str, Tensor]
 ]
 
+# todo: put this somewhere else... utils?
+def make_json_safe(obj):
+    """
+    Recursively convert numpy types and arrays in a structure
+    (dicts, lists, tuples, sets, etc.) into JSON-serializable types.
+    """
+    # handle dicts
+    if isinstance(obj, dict):
+        return {make_json_safe(k): make_json_safe(v) for k, v in obj.items()}
+
+    # handle lists and tuples
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_safe(x) for x in obj]
+
+    # handle sets
+    elif isinstance(obj, set):
+        return [make_json_safe(x) for x in obj]  # convert to list for JSON
+
+    # handle numpy scalars
+    elif isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating,)):
+        return float(obj)
+    elif isinstance(obj, (np.bool_)):
+        return bool(obj)
+
+    # handle numpy arrays
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+
+    # fallback for anything else
+    else:
+        return obj
+
 
 class JetReconstructionDataset(Dataset):
     def __init__(
@@ -48,7 +85,8 @@ class JetReconstructionDataset(Dataset):
         clip_dict: dict = None,
         save_indices: bool = False,
         limit_index_sorting = True,
-        shuffle_by_sample = False
+        shuffle_by_sample = False,
+        global_balancing: dict = None
     ):
         """ A container class for reading in jet reconstruction datasets.
 
@@ -84,9 +122,13 @@ class JetReconstructionDataset(Dataset):
         limit_index_sorting : bool
             Boolean indicating whether we ought to do 'np.sort(limit_index)' at end of function
             --> not advisable for large files
-        shuffle_by_sample : bool
+        shuffle_by_sample : bool [deprecated]
             Boolean indicating whether we ought to shuffle and split train/val by sample or not (default=False)
             Harcoded -> ought to really be used for debugging mainly...
+        global_balancing : dict
+            Config specifying how to balance our dataset --> a generalised version of 'shuffle_by_sample' which
+            deals only with the sample array and addresses all unique samples
+
         """
         super(JetReconstructionDataset, self).__init__()
 
@@ -94,6 +136,7 @@ class JetReconstructionDataset(Dataset):
         self.event_info: EventInfo = event_info
         self.clip_dict = clip_dict
         self.saved_indices = None
+        self.balancing_info = None
 
         if isinstance(event_info, str):
             if ".ini" in event_info:
@@ -128,8 +171,26 @@ class JetReconstructionDataset(Dataset):
             #          self.num_events = custom_mask.shape[0]
 
             # Adjust limit index into a standard format.
-            if shuffle_by_sample:
-                limit_index = self.compute_limit_index_by_sample(file, limit_index, randomization_seed, custom_mask=custom_mask, limit_index_sorting=limit_index_sorting)
+
+            # if shuffle_by_sample:
+            #     limit_index = self.compute_limit_index_by_sample(file, limit_index, randomization_seed, custom_mask=custom_mask, limit_index_sorting=limit_index_sorting)
+            if global_balancing is not None:
+                print(f"'global_balancing' initialisation of dataset")
+                force_n = None
+                if "force_n" in global_balancing and global_balancing["force_n"] is not None:
+                    force_n = global_balancing["force_n"]
+
+                limit_index, balancing_info = self.global_balancer(file, limit_index, global_balancing["selection"], randomization_seed, 
+                    force_n=force_n, cut_to_min=global_balancing["balancing_cut"], limit_index_sorting=limit_index_sorting, 
+                    custom_mask=custom_mask)
+                
+                self.balancing_info = balancing_info
+
+                # in this case, we'd also like to save indices automatically
+                if not save_indices:
+                    print(f"Overriding 'save_indices' {save_indices} to 'True'")
+                    save_indices = True
+
             elif custom_mask is None:
                 limit_index = self.compute_limit_index(limit_index, randomization_seed, limit_index_sorting=limit_index_sorting)
             else:
@@ -201,6 +262,205 @@ class JetReconstructionDataset(Dataset):
             return hdf5_file[key_string]
         else:
             raise KeyError(f"{key} not found in group {group_string}")
+
+    def global_balancer(
+        self, file: h5py.File, limit_index: TLimitIndex, conf: dict, 
+        randomization_seed: int, force_n: int = None, cut_to_min: bool = True,
+        limit_index_sorting: bool = True, custom_mask: np.ndarray = None,
+        verbose: bool = True
+    ):
+        '''
+            Given some file with some properties per event, e.g. sample, year, that we'd like
+            to equalise, do so automatically...
+            - file (h5py.File): opened file object
+            - limit_index (tuple or float): what to give to each subcategory --> since we'd like
+                exactly the same numbers also for validation... (otherwise gets complicated..)
+            - conf (dict), information about the independent sortings e.g.,
+                {'sample':{'list':[[47],[51],[55],[59],[63]], 'inpath':'WEIGHTS/EVENT/sample', 'method':None}}
+                - 'list' (list or dict) of groupings, which uses some reference array to s
+                where 'inpath' is compulsory if 'method' is None, else we have hardcoded 
+        '''
+        if verbose: print(f"GLOBAL_BALANCER VERBOSE OUTPUT:")
+
+        if not cut_to_min:
+            print(f"Warning! 'cut_to_min'={cut_to_min}, meaning we're just shuffling given some selection")
+            print(f" - (no balancing going on...)")
+
+        random_state = None
+        if randomization_seed > 0:
+            if verbose: print(f" - getting random state using seed {randomization_seed}")
+            random_state = np.random.RandomState(seed=randomization_seed)
+        
+        # 1. Get all masks for each category
+        if verbose: print(f" - getting masks for each category")
+        groupings = {} # e.g., {'year':{'2016':..}, 'sample':{'zp500w4':..,'tt':..},..}
+        for name, grouping in conf.items():
+            if verbose:
+                print(f" - - {name}:")
+                for tk,tv in grouping.items(): print(f" - - - {tk}: {tv}")
+
+            if grouping["method"] is None:
+                # comparator = file[grouping["inpath"]]
+                comparator = self.dataset(file, grouping["inpath"].split("/")[:-1], grouping["inpath"].split("/")[-1])
+                # use_array = self.dataset(file, ["WEIGHTS/EVENT"], "sample")
+                if verbose: print(f" - - - got comparator: {comparator.shape}, {comparator[0:5]}, {comparator}")
+            # elif grouping["method"] == "num_tops":
+                # would be hardcoded... but just an example
+                # would make comparator an array of number of tops per event
+                # though , be careful if we're clipping jets -> affects the n. tops... 
+                # which i don't have been loaded in yet...
+            else:
+                raise NotImplementedError(f"Not implemented grouping method {grouping['method']}")
+
+            # get masks using comparator
+            masks = {}
+            if "list" in grouping:
+                for i, subgroup in enumerate(grouping["list"]):
+                    if isinstance(grouping["list"], dict):
+                        subgroup_name = subgroup
+                        subgroup_value = grouping["list"][subgroup]
+                    elif isinstance(grouping["list"], list):
+                        subgroup_value = subgroup
+                        # subgroup_name = f"{name}_" + "_".join(subgroup)
+                        subgroup_name = "_".join(subgroup) # got rid of {name} since it'd be double..
+                    else:
+                        raise ValueError(f"Can't handle grouping 'list' type of {grouping['list']}")
+                    
+                    # use_mask = np.isin(subgroup_value, comparator)
+                    use_mask = np.isin(comparator, subgroup_value)
+                    if verbose: 
+                        print(f" - - - - getting mask for {subgroup_name} using {subgroup_value}")
+                        print(f" - - - - - comparator: {comparator[0:5]}, mask: {use_mask[0:5]}")
+
+                    if custom_mask is not None:
+                        # in case we made like variable cleaning cuts prior for example
+                        use_mask = use_mask & custom_mask
+                    masks[subgroup_name] = use_mask
+            else:
+                # assumes unique values are the subgroups we'd like...
+                subgroups = np.unique(comparator)
+                for unique_val in subgroups:
+                    # subgroup_name = f"{name}_{unique_val}"
+                    subgroup_name = f"{unique_val}" # got rid of {name} since it'd be double..
+                    subgroup_value = [unique_val]
+                    # use_mask = np.isin(subgroup_value, comparator)
+                    use_mask = np.isin(comparator, subgroup_value)
+                    if custom_mask is not None:
+                        # in case we made like variable cleaning cuts prior for example
+                        use_mask = use_mask & custom_mask
+                    masks[subgroup_name] = use_mask
+
+            # groupings.append(copy.deepcopy(masks))
+            groupings[name] = copy.deepcopy(masks)
+
+        # 2. Now get all the combinations
+        print(f" - getting all combinations")
+        categories = list(groupings.keys())
+        label_lists = [list(groupings[c].keys()) for c in categories]
+        all_cats = {}
+        min_events = None
+        for combo in itertools.product(*label_lists):
+
+            name = "_".join(f"{cat}_{label}" for cat, label in zip(categories, combo))
+            combo_mask = np.logical_and.reduce([
+                groupings[cat][label] for cat, label in zip(categories, combo)
+            ])
+            pass_combo_mask = np.sum(combo_mask)
+            if min_events is None:
+                min_events = pass_combo_mask
+            elif pass_combo_mask < min_events:
+                min_events = pass_combo_mask
+            print(f" - - combo {combo}: {pass_combo_mask}")
+
+            all_cats[name] = {
+                'mask':combo_mask,
+                'n_events_pre':pass_combo_mask
+            }
+
+        # Moving this --> it doesn't make sense if we do compute_limit_index after
+        # if force_n is not None and force_n > min_events:
+        #     print(f"Warning! 'force_n' is {force_n}, which is > min events {min_events}")
+        #     print(f" - (should be smaller)")
+        #     min_events = min_events
+        # elif force_n is not None and force_n < min_events:
+        #     min_events = force_n
+        
+        # 3. Permute & cut to first n...
+        total_limit_index = []
+        if verbose: print(f" - cutting on categories")
+        for cat in all_cats:
+            
+            cat_idx = np.where(all_cats[cat]["mask"])[0]
+            temp_mask = np.full(cat_idx.shape[0], True, dtype=bool)
+            if verbose: 
+                print(f" - - {cat}, {cat_idx[0:5], cat_idx.shape[0]}")
+            if cut_to_min:
+                temp_mask[min_events:] = False
+            if random_state is not None:
+                # shuffling beforehand so that we're not just
+                # cutting out the first N events in case that's not properly
+                # shuffled somehow...
+                temp_mask = random_state.permutation(temp_mask)
+
+            cat_idx = cat_idx[temp_mask]
+            if verbose: print(f" - - - post-mask: {cat_idx[0:5], cat_idx.shape[0]}")
+
+            all_cats[cat]['n_events_post_min_cut'] = cat_idx.shape[0]
+            # this part is primarily if we want to use dataset_limit & train_validation_split..
+            # tbh, not sure how to then extend this further for the test sample...
+            # i.e., does limit_index = limit_index[lower_index:upper_index] per cat
+            limit_index_by_cat = self.compute_limit_index(
+                cat_idx, randomization_seed, limit_index_og=limit_index
+            )
+            all_cats[cat]['n_events_post_limit_index'] = limit_index_by_cat.shape[0]
+
+            # todo: should we be worried about shuffling here?
+            if force_n is not None and force_n > limit_index_by_cat.shape[0]:
+                print(f"Warning! 'force_n' is {force_n}, which is > n events in cat {cat} ({limit_index_by_cat.shape[0]})")
+                print(f" - (should be smaller)")
+            elif force_n is not None and force_n < limit_index_by_cat.shape[0]:
+                limit_index_by_cat = limit_index_by_cat[:force_n]
+            all_cats[cat]['n_events_post_force_n'] = limit_index_by_cat.shape[0]
+
+            total_limit_index.append(limit_index_by_cat)
+        
+        # 4. Concatenate all the categories --> shuffle/sort if specified
+        total_limit_index = np.concatenate(total_limit_index)
+
+        # save info
+        events_by_category = {}
+        for k in all_cats:
+            # why is this so harcoded?
+            save_info = {}
+            for info in all_cats[k]:
+                if info == "mask": continue
+                save_info[info] = all_cats[k][info]
+            events_by_category[k] = copy.deepcopy(save_info)
+
+            # events_by_category[k] = {
+            #     "n_events_pre":all_cats[k]["n_events_pre"],
+            #     "n_events_post_min_cut":all_cats[k]["n_events_post_min_cut"],
+            #     "n_events_post_limit_index":all_cats[k]["n_events_post_limit_index"]
+            # }
+            
+        # assumes we won't make jet limit cuts / n top limit cuts or anything..
+        events_by_category["total"] = total_limit_index.shape[0]
+        events_by_category["total_randomized"] = random_state is None
+        events_by_category["total_sorted"] = limit_index_sorting
+
+        if random_state is not None:
+            ret = random_state.permutation(total_limit_index)
+        else:
+            print(f"Warning, dataset is stacked from cat to cat!!! Should ideally shuffle!!!")
+            ret = total_limit_index
+
+        if limit_index_sorting:
+            # should ideally not sort if we have a dataset that's stacked
+            print(f"Warning, sorting idx of dataset that may have been stacked!!! Should ideally not sort!!!")
+            ret = np.sort(ret)
+
+        return ret, events_by_category
+            
 
     def compute_limit_index_by_sample(self, file: h5py.File, limit_index: TLimitIndex, randomization_seed: int, 
         custom_mask: np.ndarray = None,
@@ -661,6 +921,20 @@ class JetReconstructionDataset(Dataset):
             return False
         np.save(outfile, self.saved_indices)
         return True
+
+    
+    def save_balancing_info_to_file(self, outfile):
+        ''' 
+            if dataset has been balanced via global_balancer --> save this info...
+        '''
+        if self.balancing_info is None:
+            print(f"No 'balancing_info' found --> nothing to save")
+            return False
+        
+        with open(outfile, "w") as file:
+            json.dump(make_json_safe(self.balancing_info), file, indent=4)
+        return True
+
 
     def __len__(self) -> int:
         return self.num_events

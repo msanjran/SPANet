@@ -7,6 +7,7 @@ import random
 import numpy as np
 import sys
 import os
+from datetime import datetime
 
 import torch
 import pytorch_lightning as pl
@@ -100,7 +101,9 @@ def main(
         save_top_X: int,
         notebook_mode: int,
         dont_limit_index_sort: bool,
-        shuffle_by_sample: bool
+        shuffle_by_sample: bool,
+        global_balancing: Optional[str],
+        dry_run: bool
     ):
 
     # args_dict = locals()
@@ -210,10 +213,16 @@ def main(
         if master:
             print(f"Overriding 'limit_index_sorting' {options.limit_index_sorting} to {not dont_limit_index_sort}")
         options.limit_index_sorting = not dont_limit_index_sort
+
     if shuffle_by_sample:
         if master:
             print(f"Overriding 'shuffle_by_sample' {options.shuffle_by_sample} to {shuffle_by_sample}")
         options.shuffle_by_sample = shuffle_by_sample
+
+    if global_balancing is not None:
+        if master:
+            print(f"Overriding 'shuffle_by_sample' {options.global_balancing} to {global_balancing}")
+        options.global_balancing = global_balancing
 
     # -------------------------------------------------------------------------------------------------------
     # Print the full hyperparameter list
@@ -322,12 +331,21 @@ def main(
 
         # save indices if we're getting val split from train split
         # for bookkeeping
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S") # what if we change something then all hell breaks loose
         saved_train = model.training_dataset.save_indices_to_file(
-            os.path.join(trainer.logger.log_dir, f"train_split_idx.npy"))
+            os.path.join(trainer.logger.log_dir, f"train_split_idx_{timestamp}.npy"))
         saved_val = model.validation_dataset.save_indices_to_file(
-            os.path.join(trainer.logger.log_dir, f"val_split_idx.npy"))
+            os.path.join(trainer.logger.log_dir, f"val_split_idx_{timestamp}.npy"))
         if saved_train and saved_val:
             print(f"Saved train/val split indices")
+        saved_balancing_info_train = model.training_dataset.save_balancing_info_to_file(
+            os.path.join(trainer.logger.log_dir, f"train_split_balancing_{timestamp}.json"))
+        saved_balancing_info_val = model.validation_dataset.save_balancing_info_to_file(
+            os.path.join(trainer.logger.log_dir, f"val_split_balancing_{timestamp}.json"))
+
+    if dry_run:
+        print(f"'dry_run' specified --> will not train model")
+        return
         
 
     trainer.fit(model, ckpt_path=checkpoint)
@@ -432,9 +450,16 @@ if __name__ == '__main__':
                         help="Basically RICH doesn't give us progress bars in notebooks..")
         
     parser.add_argument("--dont_limit_index_sort", default=False, action='store_true',
-                        help="If flagged -> will not sort the limit indices (not recommended for large files)")
+                        help="If flagged -> will not sort the limit indices (not recommended for large files)"
+                        " --> BUT should use if created dataset is direct concatenation of different dataset files")
     
     parser.add_argument("--shuffle_by_sample", default=False, action='store_true',
                         help="If flagged -> will sort indices of dataset per-sample (equal n. A,B,C -> equal n. A,B,C)")
+
+    parser.add_argument("--global_balancing", default=None, type=str,
+                        help="If given (default None), path to json file that reads specifies how we'd like to balance our dataset")
+
+    parser.add_argument("--dry_run", default=False, action='store_true',
+                        help="If flagged, won't actually run the training fit --> will just initialise model and dataset and everything...")
 
     main(**parser.parse_args().__dict__)
